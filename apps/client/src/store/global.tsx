@@ -15,6 +15,7 @@ import {
   PositionType,
   SpatialConfigType,
   NTP_CONSTANTS,
+  PlaybackControlsPermissionsEnum,
 } from "@chorus/shared";
 import { toast } from "sonner";
 import { create } from "zustand";
@@ -163,6 +164,7 @@ interface GlobalState extends GlobalStateValues {
   removeFromQueue: (index: number) => void;
   reorderQueue: (from: number, to: number) => void;
   playPreviousTrack: () => void;
+  onTrackEnded: () => void;
 }
 
 // Define initial state values
@@ -480,9 +482,10 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       }));
     },
     playNextTrack: async () => {
-      const { trackQueue, spotifyDeviceId } = get();
+      const { trackQueue, spotifyDeviceId, isShuffled } = get();
       if (trackQueue.length > 0 && spotifyDeviceId) {
-        const nextTrack = trackQueue[0];
+        const index = isShuffled ? Math.floor(Math.random() * trackQueue.length) : 0;
+        const nextTrack = trackQueue[index];
         // First, play the track on Spotify
         await fetch("/api/spotify/play", {
           method: "PUT",
@@ -495,11 +498,23 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         // Then, broadcast to sync everyone else
         get().broadcastSpotifyPlay(nextTrack);
         // Finally, remove it from the local queue
-        set((state) => ({ trackQueue: state.trackQueue.slice(1) }));
+        set((state) => ({ trackQueue: state.trackQueue.filter((_, i) => i !== index) }));
       } else {
         console.log("Queue is empty or device is not ready.");
         set({ currentTrack: null, isPlaying: false });
       }
+    }, onTrackEnded: () => {
+      const { trackQueue } = get();
+      if (trackQueue.length === 0) {
+        set({ isPlaying: false });
+        return;
+      }
+      // Debounce auto-advance
+      const now = Date.now();
+      const last = (useGlobalStore.getState() as any)._lastAutoAdvanceTime as number | undefined;
+      if (last && now - last < 1500) return;
+      (useGlobalStore.getState() as any)._lastAutoAdvanceTime = now;
+      get().playNextTrack();
     },
     playQueuedTrack: async (index: number) => {
       const { trackQueue, spotifyDeviceId } = get();
@@ -1234,5 +1249,6 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
     setReconnectionInfo: (info) => set({ reconnectionInfo: info }),
   };
 });
+
 
 

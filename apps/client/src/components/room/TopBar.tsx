@@ -95,6 +95,13 @@ export const TopBar = ({ roomId }: TopBarProps) => {
           <div className="flex items-center">
             <Hash size={12} className="mr-1" />
             <span className="flex items-center">{roomId}</span>
+            <button
+              className="ml-2 text-neutral-400 hover:text-white underline text-[11px]"
+              onClick={() => navigator.clipboard.writeText(window.location.href)}
+              title="Copy room link"
+            >
+              Copy link
+            </button>
           </div>
           <div className="flex items-center">
             <Users size={12} className="mr-1" />
@@ -110,9 +117,8 @@ export const TopBar = ({ roomId }: TopBarProps) => {
           {/* Hide Offset/RTT on small screens */}
           <div className="hidden md:flex items-center space-x-2">
             <span>Offset: {clockOffset.toFixed(2)}ms</span>
-            <span>
-              RTT: {roundTripEstimate.toFixed(2)}ms
-            </span>
+            <span>RTT: {roundTripEstimate.toFixed(2)}ms</span>
+            <span className="text-neutral-500">Jitter: {calcJitter(ntpMeasurements).toFixed(2)}ms</span>
           </div>
         </div>
 
@@ -151,6 +157,14 @@ export const TopBar = ({ roomId }: TopBarProps) => {
     </AnimatePresence>
   );
 };
+
+function calcJitter(measurements: { roundTripDelay: number }[]) {
+  if (!measurements || measurements.length < 2) return 0;
+  const rtts = measurements.map((m) => m.roundTripDelay);
+  const mean = rtts.reduce((a, b) => a + b, 0) / rtts.length;
+  const variance = rtts.reduce((acc, v) => acc + Math.pow(v - mean, 2), 0) / (rtts.length - 1);
+  return Math.sqrt(variance);
+}
 
 function NowPlayingMini() {
   const currentTrack = useGlobalStore((s) => s.currentTrack);

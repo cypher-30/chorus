@@ -5,6 +5,7 @@ import { Library, Search } from "lucide-react";
 import { motion } from "motion/react";
 import { SpotifyRecommendations } from "../spotify/SpotifyRecommendations";
 import { SpotifyPlaylists } from "../spotify/SpotifyPlaylists";
+import { SpotifyRecentlyPlayed } from "../spotify/SpotifyRecentlyPlayed";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { AudioControls } from "./AudioControls";
@@ -80,6 +81,7 @@ export const Left = ({ className }: LeftProps) => {
       <motion.div className="px-3.5 py-3 space-y-3">
         <SpotifyRecommendations />
         <SpotifyPlaylists />
+        <SpotifyRecentlyPlayed />
       </motion.div>
 
       {/* Footer spacer */}

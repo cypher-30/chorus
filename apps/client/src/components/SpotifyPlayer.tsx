@@ -10,6 +10,7 @@ export function SpotifyPlayer() {
   const setSpotifyDeviceId = useGlobalStore((state) => state.setSpotifyDeviceId);
   const setSpotifyPlaybackState = useGlobalStore((state) => state.setSpotifyPlaybackState);
   const setCurrentTrack = useGlobalStore((state) => state.setCurrentTrack);
+  const onTrackEnded = useGlobalStore((state) => state.onTrackEnded);
 
   useEffect(() => {
     // If the session has an error (like an expired token), trigger a sign-in to refresh it.
@@ -62,6 +63,9 @@ export function SpotifyPlayer() {
           });
         }
         setSpotifyPlaybackState({ positionMs, durationMs, isPlaying });
+        if (state.paused && positionMs === 0 && (state.track_window?.previous_tracks?.length ?? 0) > 0) {
+          onTrackEnded();
+        }
       });
 
       player.connect();
