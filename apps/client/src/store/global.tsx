@@ -141,6 +141,7 @@ interface GlobalState extends GlobalStateValues {
   pauseAudio: (data: { when: number }) => void;
   getCurrentTrackPosition: () => number;
   toggleShuffle: () => void;
+  setShuffle: (enabled: boolean) => void;
   skipToNextTrack: (isAutoplay?: boolean) => void;
   skipToPreviousTrack: () => void;
   getCurrentGainValue: () => number;
@@ -1159,6 +1160,7 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
     },
 
     toggleShuffle: () => set((state) => ({ isShuffled: !state.isShuffled })),
+    setShuffle: (enabled) => set({ isShuffled: enabled }),
 
     setIsSpatialAudioEnabled: (isEnabled) =>
       set({ isSpatialAudioEnabled: isEnabled }),

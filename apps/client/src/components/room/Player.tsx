@@ -12,7 +12,7 @@ export const Player = () => {
   const playNextTrack = useGlobalStore((s) => s.playNextTrack);
   const playPreviousTrack = useGlobalStore((s) => s.playPreviousTrack);
   const isShuffled = useGlobalStore((s) => s.isShuffled);
-  const toggleShuffle = useGlobalStore((s) => s.toggleShuffle);
+  const setShuffle = useGlobalStore((s) => s.setShuffle);
   const currentTrack = useGlobalStore((s) => s.currentTrack);
   const spotifyDeviceId = useGlobalStore((s) => s.spotifyDeviceId);
   const spotifyPositionMs = useGlobalStore((s) => s.spotifyPositionMs) ?? 0;
@@ -95,13 +95,11 @@ export const Player = () => {
     posthog.capture('skip_next');
   }, [playNextTrack, posthog]);
 
-  const handleShuffle = useCallback(() => {
-    toggleShuffle();
-    posthog.capture("toggle_shuffle", {
-      shuffle_enabled: !isShuffled,
-      queue_size: 0,
-    });
-  }, [toggleShuffle, posthog, isShuffled]);
+  const handleShuffleChange = useCallback((value: string) => {
+    const enabled = value === 'on';
+    setShuffle(enabled);
+    posthog.capture("set_shuffle", { shuffle_enabled: enabled });
+  }, [setShuffle, posthog]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -141,26 +139,17 @@ export const Player = () => {
           </div>
         )}
         <div className="flex items-center justify-center gap-6 mb-2">
-          <button
-            className={cn(
-              "text-gray-400 hover:text-white transition-colors cursor-pointer hover:scale-105 duration-200",
-              isShuffled && "text-primary-400"
-            )}
-            onClick={handleShuffle}
-            disabled={false}
-          >
-            <div className="relative">
-              <Shuffle
-                className={cn(
-                  "size-4 relative",
-                  isShuffled ? "text-primary-400" : "text-current"
-                )}
-              />
-              {isShuffled && (
-                <div className="absolute w-1 h-1 bg-green-500 rounded-full bottom-0 top-4.5 left-1/2 transform -translate-x-1/2 translate-y-1/2"></div>
-              )}
-            </div>
-          </button>
+          <div className="flex items-center gap-1 text-xs text-neutral-400">
+            <Shuffle className={cn("size-4", isShuffled ? "text-primary-400" : "text-current")} />
+            <select
+              className="bg-neutral-800 text-xs px-2 py-1 rounded border border-neutral-700"
+              value={isShuffled ? 'on' : 'off'}
+              onChange={(e) => handleShuffleChange(e.target.value)}
+            >
+              <option value="off">Off</option>
+              <option value="on">Shuffle</option>
+            </select>
+          </div>
           <button
             className="text-gray-400 hover:text-white transition-colors cursor-pointer hover:scale-105 duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handleSkipBack}
