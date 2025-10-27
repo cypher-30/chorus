@@ -1,4 +1,4 @@
-import { ExtractWSRequestFrom } from "@beatsync/shared";
+import { ExtractWSRequestFrom } from "@chorus/shared";
 import { requireRoomAdmin } from "../middlewares";
 import { HandlerFunction } from "../types";
 

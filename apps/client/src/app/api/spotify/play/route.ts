@@ -37,15 +37,40 @@ export async function PUT(req: Request) {
       }),
     });
 
-    if (response.ok) {
+    if (response.ok || response.status === 204) {
       // If Spotify returns a success code (like 204 No Content), it means it worked.
       return NextResponse.json({ success: true }, { status: 200 });
     } else {
-      // If Spotify returns an error, we log it and send it back to the client
-      const errorData = await response.json();
-      console.error("Spotify API Error:", errorData);
+      // Attempt transfer playback then retry play once
+      try {
+        const transfer = await fetch('https://api.spotify.com/v1/me/player', {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${session.accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ device_ids: [device_id], play: true }),
+        });
+        if (transfer.ok || transfer.status === 204) {
+          // Retry explicit play with URI
+          const retry = await fetch(PLAY_ENDPOINT, {
+            method: 'PUT',
+            headers: {
+              Authorization: `Bearer ${session.accessToken}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ uris: [track_uri] }),
+          });
+          if (retry.ok || retry.status === 204) {
+            return NextResponse.json({ success: true }, { status: 200 });
+          }
+        }
+      } catch (e) {}
+      // If still failing, surface error
+      let details: any = undefined;
+      try { details = await response.json(); } catch {}
       return NextResponse.json(
-        { error: "Failed to start playback", details: errorData },
+        { error: 'Failed to start playback', details },
         { status: response.status }
       );
     }

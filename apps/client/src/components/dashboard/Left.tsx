@@ -3,7 +3,7 @@
 import { cn } from "@/lib/utils";
 import { Library, Search } from "lucide-react";
 import { motion } from "motion/react";
-import { AudioUploaderMinimal } from "../AudioUploaderMinimal";
+import { SpotifySearch } from "../SpotifySearch";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { AudioControls } from "./AudioControls";
@@ -72,31 +72,16 @@ export const Left = ({ className }: LeftProps) => {
 
       <Separator className="bg-neutral-800/50" />
 
-      {/* Audio Controls */}
+      {/* Playback Controls */}
       <AudioControls />
 
-      {/* Tips Section */}
-      <motion.div className="mt-auto pb-4 pt-2 text-neutral-400">
-        <div className="flex flex-col gap-2 p-4 border-t border-neutral-800/50">
-          <h5 className="text-xs font-medium text-neutral-300">Tips</h5>
-          <ul className="list-disc list-outside pl-4 space-y-1.5">
-            <li className="text-xs leading-relaxed">
-              Works best with multiple devices IRL in the same space.
-            </li>
-            <li className="text-xs leading-relaxed">
-              If audio gets de-synced, pause, play / full sync and try again or
-              refresh.
-            </li>
-            <li className="text-xs leading-relaxed">
-              {"Play on speaker directly. Don't use Bluetooth."}
-            </li>
-          </ul>
-        </div>
-
-        <div className="pl-1">
-          <AudioUploaderMinimal />
-        </div>
+      {/* Spotify Search */}
+      <motion.div className="px-3.5 py-3">
+        <SpotifySearch />
       </motion.div>
+
+      {/* Tips Section (upload removed for Spotify-first) */}
+      <motion.div className="mt-auto pb-4 pt-2 text-neutral-400" />
     </motion.div>
   );
 };

@@ -18,11 +18,12 @@ export function SpotifySearch() {
     setIsLoading(true);
 
     const encodedQuery = encodeURIComponent(searchQuery);
-    const SEARCH_ENDPOINT = `https://api.spotify.com/v1/search?q=${encodedQuery}&type=track&limit=5`;
+    // Use local API proxy to avoid CORS and keep tokens server-side
+    const SEARCH_ENDPOINT = `/api/spotify/search?q=${encodedQuery}&limit=5`;
     
     try {
       const response = await fetch(SEARCH_ENDPOINT, {
-        headers: { Authorization: `Bearer ${session.accessToken}` },
+        // No auth header here; server route injects it
       });
       if (response.ok) {
         const data = await response.json();
@@ -75,3 +76,4 @@ export function SpotifySearch() {
     </div>
   );
 }
+

@@ -1,7 +1,7 @@
 import {
   UploadCompleteResponseType,
   UploadUrlResponseType,
-} from "@beatsync/shared";
+} from "@chorus/shared";
 import { Server } from "bun";
 import { errorResponse, jsonResponse } from "../utils/responses";
 

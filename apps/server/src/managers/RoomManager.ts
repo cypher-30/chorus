@@ -10,8 +10,8 @@ import {
   PositionType,
   RoomType,
   WSBroadcastType,
-} from "@beatsync/shared";
-import { AudioSourceSchema, GRID } from "@beatsync/shared/types/basic";
+} from "@chorus/shared";
+import { AudioSourceSchema, GRID } from "@chorus/shared/types/basic";
 import { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
 import { SCHEDULE_TIME_MS } from "../config";
@@ -618,3 +618,4 @@ export class RoomManager {
     }
   }
 }
+

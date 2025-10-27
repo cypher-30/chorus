@@ -1,4 +1,4 @@
-import { PositionType } from "@beatsync/shared/types/basic";
+import { PositionType } from "@chorus/shared/types/basic";
 
 function calculateEuclideanDistance(
   p1: PositionType,
@@ -58,3 +58,4 @@ export function gainFromDistanceQuadratic({
   const gain = maxGain - falloff * distance * distance;
   return Math.max(minGain, gain);
 }
+

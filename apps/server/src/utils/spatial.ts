@@ -1,4 +1,4 @@
-import { ClientType, GRID } from "@beatsync/shared";
+import { ClientType, GRID } from "@chorus/shared";
 
 /**
  * Positions clients in a circle around a center point

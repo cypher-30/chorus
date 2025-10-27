@@ -1,4 +1,4 @@
-import { epochNow, ExtractWSRequestFrom } from "@beatsync/shared";
+import { epochNow, ExtractWSRequestFrom } from "@chorus/shared";
 import { SCHEDULE_TIME_MS } from "../../config";
 import { sendBroadcast } from "../../utils/responses";
 import { requireRoom } from "../middlewares";

@@ -1,4 +1,4 @@
-import { WSBroadcastType, WSUnicastType } from "@beatsync/shared";
+import { WSBroadcastType, WSUnicastType } from "@chorus/shared";
 import { Server, ServerWebSocket } from "bun";
 import { WSData } from "./websocket";
 

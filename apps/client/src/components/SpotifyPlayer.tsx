@@ -8,6 +8,8 @@ import { useGlobalStore } from "@/store/global";
 export function SpotifyPlayer() {
   const { data: session } = useSession();
   const setSpotifyDeviceId = useGlobalStore((state) => state.setSpotifyDeviceId);
+  const setSpotifyPlaybackState = useGlobalStore((state) => state.setSpotifyPlaybackState);
+  const setCurrentTrack = useGlobalStore((state) => state.setCurrentTrack);
 
   useEffect(() => {
     // If the session has an error (like an expired token), trigger a sign-in to refresh it.
@@ -20,7 +22,7 @@ export function SpotifyPlayer() {
     window.onSpotifyWebPlaybackSDKReady = () => {
       const token = session.accessToken as string;
       const player = new window.Spotify.Player({
-        name: "Beatsync Web Player",
+        name: "Chorus Web Player",
         getOAuthToken: (cb) => cb(token),
         volume: 0.5,
       });
@@ -34,10 +36,32 @@ export function SpotifyPlayer() {
         setSpotifyDeviceId(null);
       });
 
-      player.addListener('authentication_error', ({ message }) => console.error(message));
+      player.addListener('authentication_error', ({ message }) => {
+        console.error(message);
+        // Attempt to refresh session/login if auth fails
+        try { signIn(); } catch {}
+      });
       player.addListener('account_error', ({ message }) => {
         console.error(message);
         alert("Account Error: A Spotify Premium account is required for this feature.");
+      });
+
+      // keep store in sync with player
+      player.addListener('player_state_changed', (state) => {
+        if (!state) return;
+        const positionMs = state.position ?? 0;
+        const durationMs = state.duration ?? 0;
+        const isPlaying = !state.paused;
+        const current = state.track_window?.current_track;
+        if (current) {
+          setCurrentTrack({
+            uri: current.uri,
+            name: current.name,
+            artists: current.artists?.map((a: any) => ({ name: a.name })) ?? [],
+            album: { images: (current.album?.images ?? []).map((img: any) => ({ url: img.url })) },
+          });
+        }
+        setSpotifyPlaybackState({ positionMs, durationMs, isPlaying });
       });
 
       player.connect();

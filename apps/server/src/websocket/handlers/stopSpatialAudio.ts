@@ -2,7 +2,7 @@ import {
   ExtractWSRequestFrom,
   WSBroadcastType,
   epochNow,
-} from "@beatsync/shared";
+} from "@chorus/shared";
 import { sendBroadcast } from "../../utils/responses";
 import { requireRoom } from "../middlewares";
 import { HandlerFunction } from "../types";

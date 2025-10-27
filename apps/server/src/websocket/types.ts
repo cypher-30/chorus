@@ -2,7 +2,7 @@ import {
   ClientActionEnum,
   ExtractWSRequestFrom,
   WSRequestType,
-} from "@beatsync/shared";
+} from "@chorus/shared";
 import { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
 import { WSData } from "../utils/websocket";

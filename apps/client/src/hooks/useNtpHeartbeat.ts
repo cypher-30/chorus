@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useGlobalStore, MAX_NTP_MEASUREMENTS } from "@/store/global";
-import { NTP_CONSTANTS } from "@beatsync/shared";
+import { NTP_CONSTANTS } from "@chorus/shared";
 
 interface UseNtpHeartbeatProps {
   onConnectionStale?: () => void;

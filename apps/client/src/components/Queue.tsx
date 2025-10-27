@@ -6,7 +6,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn, extractFileNameFromUrl, formatTime } from "@/lib/utils";
 import { useGlobalStore } from "@/store/global";
-import { AudioSourceType } from "@beatsync/shared";
+import { AudioSourceType } from "@chorus/shared";
 import { MoreHorizontal, Pause, Play, UploadCloud } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { usePostHog } from "posthog-js/react";
@@ -124,27 +124,7 @@ export const Queue = ({ className, ...rest }: React.ComponentProps<"div">) => {
                       {formatTime(getAudioDuration({ url: source.url }))}
                     </div>
 
-                    {/* Dropdown for re-uploading - Always shown */}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger
-                        asChild
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button className="p-1 rounded-full text-neutral-500 hover:text-white transition-colors hover:scale-110 duration-150 focus:outline-none focus:text-white focus:scale-110">
-                          <MoreHorizontal className="size-4" />
-                        </button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent
-                        side="top"
-                        align="center"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <DropdownMenuItem className="flex items-center gap-2 cursor-pointer text-sm">
-                          <UploadCloud className="size-3.5 text-neutral-400" />
-                          <span>Reupload to room</span>
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {/* Upload options removed for Spotify-first mode */}
                   </div>
                 </motion.div>
               );

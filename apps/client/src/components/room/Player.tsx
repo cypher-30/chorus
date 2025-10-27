@@ -1,63 +1,30 @@
 import { cn, formatTime } from "@/lib/utils";
-
 import { useGlobalStore } from "@/store/global";
-import {
-  Pause,
-  Play,
-  Repeat,
-  Shuffle,
-  SkipBack,
-  SkipForward,
-} from "lucide-react";
+import { Pause, Play, Repeat, Shuffle, SkipBack, SkipForward } from "lucide-react";
 import { usePostHog } from "posthog-js/react";
 import { useCallback, useEffect, useState } from "react";
 import { Slider } from "../ui/slider";
 
 export const Player = () => {
   const posthog = usePostHog();
-  const broadcastPlay = useGlobalStore((state) => state.broadcastPlay);
-  const broadcastPause = useGlobalStore((state) => state.broadcastPause);
-  const isPlaying = useGlobalStore((state) => state.isPlaying);
-  const getCurrentTrackPosition = useGlobalStore(
-    (state) => state.getCurrentTrackPosition
-  );
-  const selectedAudioId = useGlobalStore((state) => state.selectedAudioUrl);
-  const audioSources = useGlobalStore((state) => state.audioSources);
-  const currentTime = useGlobalStore((state) => state.currentTime);
-  const skipToNextTrack = useGlobalStore((state) => state.skipToNextTrack);
-  const skipToPreviousTrack = useGlobalStore(
-    (state) => state.skipToPreviousTrack
-  );
-  const isShuffled = useGlobalStore((state) => state.isShuffled);
-  const toggleShuffle = useGlobalStore((state) => state.toggleShuffle);
+  const isPlaying = useGlobalStore((s) => s.isPlaying);
+  const togglePlayPause = useGlobalStore((s) => s.togglePlayPause);
+  const playNextTrack = useGlobalStore((s) => s.playNextTrack);
+  const isShuffled = useGlobalStore((s) => s.isShuffled);
+  const toggleShuffle = useGlobalStore((s) => s.toggleShuffle);
+  const currentTrack = useGlobalStore((s) => s.currentTrack);
+  const spotifyDeviceId = useGlobalStore((s) => s.spotifyDeviceId);
+  const spotifyPositionMs = useGlobalStore((s) => s.spotifyPositionMs) ?? 0;
+  const spotifyDurationMs = useGlobalStore((s) => s.spotifyDurationMs) ?? 0;
 
   // Local state for slider
   const [sliderPosition, setSliderPosition] = useState(0);
   const [trackDuration, setTrackDuration] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
-
-  const getAudioDuration = useGlobalStore((state) => state.getAudioDuration);
-
-  // Find the selected audio source and its duration
+  // keep duration from spotify SDK
   useEffect(() => {
-    if (!selectedAudioId) return;
-
-    const audioSource = audioSources.find(
-      (source) => source.url === selectedAudioId
-    );
-    if (audioSource) {
-      setTrackDuration(getAudioDuration({ url: audioSource.url }));
-      // Reset slider position when track changes
-      setSliderPosition(0);
-    }
-  }, [selectedAudioId, audioSources, getAudioDuration]);
-
-  // Sync with currentTime when it changes (e.g., after pausing)
-  useEffect(() => {
-    if (!isPlaying) {
-      setSliderPosition(currentTime);
-    }
-  }, [currentTime, isPlaying]);
+    setTrackDuration(spotifyDurationMs / 1000);
+  }, [spotifyDurationMs]);
 
   // Update slider position during playback
   useEffect(() => {
@@ -65,13 +32,12 @@ export const Player = () => {
 
     const interval = setInterval(() => {
       if (!isDragging) {
-        const currentPosition = getCurrentTrackPosition();
-        setSliderPosition(currentPosition);
+        setSliderPosition(spotifyPositionMs / 1000);
       }
     }, 100); // Update every 100ms
 
     return () => clearInterval(interval);
-  }, [isPlaying, getCurrentTrackPosition, isDragging]);
+  }, [isPlaying, spotifyPositionMs, isDragging]);
 
   // Handle slider change
   const handleSliderChange = useCallback((value: number[]) => {
@@ -87,72 +53,54 @@ export const Player = () => {
       setIsDragging(false);
       // If currently playing, broadcast play at new position
       // If paused, just update position without playing
-      if (isPlaying) {
-        broadcastPlay(newPosition);
-      } else {
-        setSliderPosition(newPosition);
+      // Seek via Spotify API
+      const position_ms = Math.floor(newPosition * 1000);
+      if (spotifyDeviceId) {
+        fetch('/api/spotify/seek', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ device_id: spotifyDeviceId, position_ms })
+        });
       }
+      setSliderPosition(newPosition);
 
       // Log scrub event
       posthog.capture("scrub_confirm", {
         position: newPosition,
-        track_id: selectedAudioId,
+        track_id: currentTrack?.uri,
         track_duration: trackDuration,
       });
     },
     [
-      broadcastPlay,
       isPlaying,
       setSliderPosition,
       posthog,
-      selectedAudioId,
+      currentTrack,
       trackDuration,
     ]
   );
 
   const handlePlay = useCallback(() => {
-    if (isPlaying) {
-      broadcastPause();
-      posthog.capture("pause_track", { track_id: selectedAudioId });
-    } else {
-      broadcastPlay(sliderPosition);
-      posthog.capture("play_track", {
-        position: sliderPosition,
-        track_id: selectedAudioId,
-      });
-    }
-  }, [
-    isPlaying,
-    broadcastPause,
-    broadcastPlay,
-    sliderPosition,
-    posthog,
-    selectedAudioId,
-  ]);
+    togglePlayPause();
+    posthog.capture(isPlaying ? 'pause_track' : 'play_track');
+  }, [togglePlayPause, isPlaying, posthog]);
 
   const handleSkipBack = useCallback(() => {
-    if (!isShuffled) {
-      skipToPreviousTrack();
-      posthog.capture("skip_previous", {
-        from_track_id: selectedAudioId,
-      });
-    }
-  }, [skipToPreviousTrack, isShuffled, posthog, selectedAudioId]);
+    // no-op for now or implement previous queue item
+  }, []);
 
   const handleSkipForward = useCallback(() => {
-    skipToNextTrack();
-    posthog.capture("skip_next", {
-      from_track_id: selectedAudioId,
-    });
-  }, [skipToNextTrack, posthog, selectedAudioId]);
+    playNextTrack();
+    posthog.capture('skip_next');
+  }, [playNextTrack, posthog]);
 
   const handleShuffle = useCallback(() => {
     toggleShuffle();
     posthog.capture("toggle_shuffle", {
       shuffle_enabled: !isShuffled,
-      queue_size: audioSources.length,
+      queue_size: 0,
     });
-  }, [toggleShuffle, posthog, isShuffled, audioSources.length]);
+  }, [toggleShuffle, posthog, isShuffled]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -180,6 +128,17 @@ export const Player = () => {
   return (
     <div className="w-full flex justify-center">
       <div className="w-full max-w-[37rem]">
+        {currentTrack && (
+          <div className="flex items-center gap-3 mb-2">
+            {currentTrack.album.images?.[0]?.url && (
+              <img src={currentTrack.album.images[0].url} className="w-10 h-10" />
+            )}
+            <div className="min-w-0">
+              <div className="text-sm font-medium truncate">{currentTrack.name}</div>
+              <div className="text-xs text-neutral-400 truncate">{currentTrack.artists.map(a=>a.name).join(', ')}</div>
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-center gap-6 mb-2">
           <button
             className={cn(
@@ -187,7 +146,7 @@ export const Player = () => {
               isShuffled && "text-primary-400"
             )}
             onClick={handleShuffle}
-            disabled={audioSources.length <= 1}
+            disabled={false}
           >
             <div className="relative">
               <Shuffle
@@ -204,7 +163,7 @@ export const Player = () => {
           <button
             className="text-gray-400 hover:text-white transition-colors cursor-pointer hover:scale-105 duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handleSkipBack}
-            disabled={isShuffled || audioSources.length <= 1}
+            disabled={true}
           >
             <SkipBack className="w-7 h-7 md:w-5 md:h-5 fill-current" />
           </button>
@@ -221,7 +180,7 @@ export const Player = () => {
           <button
             className="text-gray-400 hover:text-white transition-colors cursor-pointer hover:scale-105 duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handleSkipForward}
-            disabled={audioSources.length <= 1}
+            disabled={false}
           >
             <SkipForward className="w-7 h-7 md:w-5 md:h-5 fill-current" />
           </button>

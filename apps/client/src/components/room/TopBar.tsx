@@ -2,7 +2,7 @@
 import { SOCIAL_LINKS } from "@/constants";
 import { MAX_NTP_MEASUREMENTS, useGlobalStore } from "@/store/global";
 import { useRoomStore } from "@/store/room";
-import { Crown, Hash, Users } from "lucide-react";
+import { Crown, Hash, Users, Pause, Play } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
 import { FaDiscord, FaGithub } from "react-icons/fa";
@@ -41,8 +41,10 @@ export const TopBar = ({ roomId }: TopBarProps) => {
             href="/"
             className="font-medium hover:text-white transition-colors"
           >
-            Beatsync
+            Chorus
           </Link>
+          {/* Now Playing mini-widget */}
+          <NowPlayingMini />
           <div className="flex items-center">
             <div className="h-1.5 w-1.5 rounded-full bg-green-500 mr-1.5 animate-pulse"></div>
             <span>Synced</span>
@@ -149,3 +151,24 @@ export const TopBar = ({ roomId }: TopBarProps) => {
     </AnimatePresence>
   );
 };
+
+function NowPlayingMini() {
+  const currentTrack = useGlobalStore((s) => s.currentTrack);
+  const isPlaying = useGlobalStore((s) => s.isPlaying);
+  const togglePlayPause = useGlobalStore((s) => s.togglePlayPause);
+  if (!currentTrack) return null;
+  return (
+    <div className="hidden md:flex items-center gap-2 max-w-[28rem]">
+      {currentTrack.album.images?.[2]?.url && (
+        <img src={currentTrack.album.images[2].url} className="w-5 h-5" />
+      )}
+      <div className="truncate max-w-[20rem]">
+        <span className="text-white truncate mr-1">{currentTrack.name}</span>
+        <span className="text-neutral-500 truncate">– {currentTrack.artists.map(a=>a.name).join(', ')}</span>
+      </div>
+      <button onClick={togglePlayPause} className="text-neutral-300 hover:text-white">
+        {isPlaying ? <Pause className="w-3.5 h-3.5"/> : <Play className="w-3.5 h-3.5"/>}
+      </button>
+    </div>
+  );
+}

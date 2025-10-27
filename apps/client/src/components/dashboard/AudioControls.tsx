@@ -13,6 +13,9 @@ export const AudioControls = () => {
     (state) => state.sendStopSpatialAudio
   );
   const isLoadingAudio = useGlobalStore((state) => state.isInitingSystem);
+  const isPlaying = useGlobalStore((state) => state.isPlaying);
+  const togglePlayPause = useGlobalStore((state) => state.togglePlayPause);
+  const playNextTrack = useGlobalStore((state) => state.playNextTrack);
 
   const handleStartSpatialAudio = () => {
     startSpatialAudio();
@@ -26,13 +29,40 @@ export const AudioControls = () => {
 
   return (
     <motion.div className="px-4 space-y-3 py-3">
-      <h2
-        className={`text-xs font-medium uppercase tracking-wide ${
+      {/* Playback controls */}
+      <motion.div className="bg-neutral-800/20 rounded-md p-3 hover:bg-neutral-800/30 transition-colors">
+        <div className="flex justify-between items-center">
+          <div className="text-xs text-neutral-300">Playback</div>
+          <div className="flex gap-2">
+            <Button
+              className="text-xs px-3 py-1 h-auto bg-primary-600/80 hover:bg-primary-600 text-white"
+              size="sm"
+              onClick={() => {
+                togglePlayPause();
+                posthog.capture(isPlaying ? "pause_click" : "play_click");
+              }}
+              disabled={isLoadingAudio}
+            >
+              {isPlaying ? "Pause" : "Play"}
+            </Button>
+            <Button
+              className="text-xs px-3 py-1 h-auto bg-neutral-700/60 hover:bg-neutral-700 text-white"
+              size="sm"
+              onClick={() => {
+                playNextTrack();
+                posthog.capture("next_click");
+              }}
+              disabled={isLoadingAudio}
+            >
+              Next
+            </Button>
+          </div>
+        </div>
+      </motion.div>
+      <h2 className={`text-xs font-medium uppercase tracking-wide ${
           isLoadingAudio ? "text-neutral-500" : "text-neutral-400"
-        }`}
-      >
-        Audio Effects{" "}
-        {isLoadingAudio && (
+        }`}>
+        Spatial Audio {isLoadingAudio && (
           <span className="text-xs opacity-70">(loading...)</span>
         )}
       </h2>

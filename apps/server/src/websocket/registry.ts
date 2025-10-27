@@ -1,4 +1,4 @@
-import { ClientActionEnum } from "@beatsync/shared";
+import { ClientActionEnum } from "@chorus/shared";
 import { handleSetAdmin } from "./handlers/handleSetAdmin";
 import { handleSetPlaybackControls } from "./handlers/handleSetPlaybackControls";
 import { handleMoveClient } from "./handlers/moveClient";

@@ -7,7 +7,7 @@ import {
   epochNow,
   NTPResponseMessageType,
   WSResponseSchema,
-} from "@beatsync/shared";
+} from "@chorus/shared";
 import { useEffect } from "react";
 import { useWebSocketReconnection } from "@/hooks/useWebSocketReconnection";
 

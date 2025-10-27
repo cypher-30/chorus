@@ -1,5 +1,5 @@
 {
-  "name": "beatsync",
+  "name": "chorus",
   "packageManager": "bun@1.2.2",
   "scripts": {
     "build": "turbo run build",

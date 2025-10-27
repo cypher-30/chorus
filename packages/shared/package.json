@@ -1,5 +1,5 @@
 {
-  "name": "@beatsync/shared",
+  "name": "@chorus/shared",
   "type": "module",
   "devDependencies": {
     "@types/bun": "latest"

@@ -10,4 +10,4 @@ export const VOLUME_UP_RAMP_TIME = 0.5;
 export const VOLUME_DOWN_RAMP_TIME = 0.5;
 
 // Scheduling settings
-export const SCHEDULE_TIME_MS = 750;
+export const SCHEDULE_TIME_MS = 250;

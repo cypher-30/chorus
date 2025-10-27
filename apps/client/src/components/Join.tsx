@@ -114,7 +114,7 @@ export const Join = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.4, delay: 0.13 }}
           >
-            Join a Beatsync Room
+            Join a Chorus Room
           </motion.h2>
           <motion.p
             className="text-neutral-400 mb-5 text-center text-xs"

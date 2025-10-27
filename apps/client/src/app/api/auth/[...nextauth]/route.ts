@@ -1,7 +1,7 @@
 import NextAuth, { AuthOptions } from "next-auth";
 import SpotifyProvider from "next-auth/providers/spotify";
 
-const SPOTIFY_REFRESH_TOKEN_URL = "https://api.spotify.com/v1/me/player/play?device_id=$1";
+const SPOTIFY_REFRESH_TOKEN_URL = "https://accounts.spotify.com/api/token";
 const SPOTIFY_CLIENT_ID = process.env.SPOTIFY_CLIENT_ID as string;
 const SPOTIFY_CLIENT_SECRET = process.env.SPOTIFY_CLIENT_SECRET as string;
 
@@ -19,6 +19,7 @@ async function refreshAccessToken(token: any) {
           Buffer.from(SPOTIFY_CLIENT_ID + ":" + SPOTIFY_CLIENT_SECRET).toString(
             "base64"
           ),
+        "Content-Type": "application/x-www-form-urlencoded",
       },
       body: params,
     });

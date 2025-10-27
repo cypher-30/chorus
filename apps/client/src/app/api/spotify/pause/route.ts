@@ -14,7 +14,7 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: "Device ID is required" }, { status: 400 });
   }
 
-  const PAUSE_ENDPOINT = `https://api.spotify.com/v1/me/player/play?device_id=$2{device_id}`;
+  const PAUSE_ENDPOINT = `https://api.spotify.com/v1/me/player/pause?device_id=${device_id}`;
   
   try {
     const response = await fetch(PAUSE_ENDPOINT, {

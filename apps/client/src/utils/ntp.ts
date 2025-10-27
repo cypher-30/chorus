@@ -1,4 +1,4 @@
-import { ClientActionEnum, epochNow } from "@beatsync/shared";
+import { ClientActionEnum, epochNow } from "@chorus/shared";
 import { sendWSRequest } from "./ws";
 import { MAX_NTP_MEASUREMENTS } from "@/store/global";
 

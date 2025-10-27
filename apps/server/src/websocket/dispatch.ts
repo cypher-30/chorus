@@ -1,4 +1,4 @@
-import { WSRequestType } from "@beatsync/shared";
+import { WSRequestType } from "@chorus/shared";
 import { Server, ServerWebSocket } from "bun";
 import { WSData } from "../utils/websocket";
 import { WS_REGISTRY } from "./registry";

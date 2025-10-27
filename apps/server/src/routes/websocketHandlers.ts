@@ -3,7 +3,7 @@ import {
   epochNow,
   WSBroadcastType,
   WSRequestSchema,
-} from "@beatsync/shared";
+} from "@chorus/shared";
 import { Server, ServerWebSocket } from "bun";
 import { globalManager } from "../managers";
 import { sendBroadcast, sendUnicast } from "../utils/responses";

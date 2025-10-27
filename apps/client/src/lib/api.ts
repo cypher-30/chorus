@@ -5,7 +5,7 @@ import {
   UploadCompleteResponseType,
   UploadCompleteType,
   UploadUrlResponseType,
-} from "@beatsync/shared";
+} from "@chorus/shared";
 import axios from "axios";
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL;

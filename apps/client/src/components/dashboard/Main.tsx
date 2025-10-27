@@ -1,7 +1,8 @@
 "use client";
 import { cn } from "@/lib/utils";
 import { motion } from "motion/react";
-import { SpotifySearch } from "../SpotifySearch"; // <-- We import our new component
+import { SpotifySearch } from "../SpotifySearch";
+import { SpotifyQueue } from "../SpotifyQueue";
 
 // This is your original 'Main' component
 export const Main = () => {
@@ -12,9 +13,9 @@ export const Main = () => {
         "scrollbar-thin scrollbar-thumb-rounded-md scrollbar-thumb-muted-foreground/10 scrollbar-track-transparent hover:scrollbar-thumb-muted-foreground/20"
       )}
     >
-      <motion.div className="p-6 pt-4">
-        {/* We replace the old <Queue /> with our SpotifySearch component */}
+      <motion.div className="p-6 pt-4 space-y-6">
         <SpotifySearch />
+        <SpotifyQueue />
       </motion.div>
     </motion.div>
   );

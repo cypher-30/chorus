@@ -15,7 +15,7 @@ import {
   PositionType,
   SpatialConfigType,
   NTP_CONSTANTS,
-} from "@beatsync/shared";
+} from "@chorus/shared";
 import { toast } from "sonner";
 import { create } from "zustand";
 import { useRoomStore } from "./room";
@@ -94,6 +94,9 @@ interface GlobalStateValues {
   spotifyDeviceId: string | null;
   trackQueue: SpotifyTrack[];
   currentTrack: SpotifyTrack | null;
+  spotifyPositionMs?: number;
+  spotifyDurationMs?: number;
+  pendingSpotifyUri?: string;
 }
 
 interface GlobalState extends GlobalStateValues {
@@ -154,6 +157,10 @@ interface GlobalState extends GlobalStateValues {
   playSpotifyTrack: (trackUri: string) => void;
   togglePlayPause: () => void;
   playNextTrack: () => void;
+  setSpotifyPlaybackState: (data: { positionMs?: number; durationMs?: number; isPlaying?: boolean }) => void;
+  playQueuedTrack: (index: number) => void;
+  removeFromQueue: (index: number) => void;
+  reorderQueue: (from: number, to: number) => void;
 }
 
 // Define initial state values
@@ -195,6 +202,7 @@ const initialState: GlobalStateValues = {
   audioPlayer: null,
   duration: 0,
   volume: 0.5,
+  pendingSpotifyUri: undefined,
   reconnectionInfo: {
     isReconnecting: false,
     currentAttempt: 0,
@@ -322,13 +330,34 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
     ...initialState,
 
     // <<< START OF SPOTIFY METHODS >>>
-    setSpotifyDeviceId: (deviceId) => set({ spotifyDeviceId: deviceId }),
+    setSpotifyDeviceId: (deviceId) => {
+      set({ spotifyDeviceId: deviceId });
+      const { pendingSpotifyUri } = get();
+      if (deviceId && pendingSpotifyUri) {
+        // Try to start pending track now that the device is ready
+        get()
+          .playSpotifyTrack(pendingSpotifyUri)
+          .finally(() => set({ pendingSpotifyUri: undefined }));
+      }
+    },
     setCurrentTrack: (track) => set({ currentTrack: track }),
     addToQueue: (track) => {
       set((state) => ({ trackQueue: [...state.trackQueue, track] }));
       if (!get().currentTrack) {
         get().broadcastSpotifyPlay(track);
       }
+    },
+    removeFromQueue: (index) => {
+      set((state) => ({ trackQueue: state.trackQueue.filter((_, i) => i !== index) }));
+    },
+    reorderQueue: (from, to) => {
+      set((state) => {
+        const q = [...state.trackQueue];
+        if (from < 0 || from >= q.length || to < 0 || to >= q.length) return {} as any;
+        const [item] = q.splice(from, 1);
+        q.splice(to, 0, item);
+        return { trackQueue: q } as any;
+      });
     },
     broadcastSpotifyPlay: (track) => {
       const { socket } = get();
@@ -348,7 +377,10 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       const { spotifyDeviceId } = get();
       if (!spotifyDeviceId) {
         console.error("Cannot play Spotify track, no device ID available.");
-        toast.error("No active Spotify device found!");
+        set({ pendingSpotifyUri: trackUri });
+        toast.error(
+          "No active Spotify device. Make sure you're signed in and the 'Chorus Web Player' is selected in Spotify. We'll start playback once it's ready."
+        );
         return;
       }
       console.log(
@@ -377,12 +409,14 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       if (!spotifyDeviceId || !currentTrack) return;
 
       if (isPlaying) {
-        // If music is playing, call the new PAUSE endpoint
-        await fetch("apps\client\src\app\api\spotify\pause\route.ts", {
+        // If music is playing, call the PAUSE endpoint and broadcast pause
+        await fetch("/api/spotify/pause", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ device_id: spotifyDeviceId }),
         });
+        // Broadcast pause to room so others stop
+        get().broadcastPause();
         set({ isPlaying: false });
       } else {
         // If music is paused, call the PLAY endpoint to resume
@@ -394,8 +428,17 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
             track_uri: currentTrack.uri,
           }),
         });
+        // Broadcast play of current track to room
+        get().broadcastSpotifyPlay(currentTrack);
         set({ isPlaying: true });
       }
+    },
+    setSpotifyPlaybackState: ({ positionMs, durationMs, isPlaying }) => {
+      set((s) => ({
+        spotifyPositionMs: positionMs ?? s.spotifyPositionMs,
+        spotifyDurationMs: durationMs ?? s.spotifyDurationMs,
+        isPlaying: isPlaying ?? s.isPlaying,
+      }));
     },
     playNextTrack: async () => {
       const { trackQueue, spotifyDeviceId } = get();
@@ -418,6 +461,18 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         console.log("Queue is empty or device is not ready.");
         set({ currentTrack: null, isPlaying: false });
       }
+    },
+    playQueuedTrack: async (index: number) => {
+      const { trackQueue, spotifyDeviceId } = get();
+      const track = trackQueue[index];
+      if (!track || !spotifyDeviceId) return;
+      await fetch("/api/spotify/play", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ device_id: spotifyDeviceId, track_uri: track.uri }),
+      });
+      get().broadcastSpotifyPlay(track);
+      set((state) => ({ trackQueue: state.trackQueue.filter((_, i) => i !== index) }));
     },
     // <<< END OF SPOTIFY METHODS >>>
 
@@ -603,6 +658,26 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       const waitTimeSeconds = getWaitTimeSeconds(state, targetServerTime);
       console.log(`Pausing track in ${waitTimeSeconds}`);
 
+      // If current track is Spotify, schedule a Spotify pause
+      if (state.currentTrack && state.currentTrack.uri?.startsWith("spotify:track")) {
+        const ms = Math.max(0, Math.floor(waitTimeSeconds * 1000));
+        const deviceId = state.spotifyDeviceId;
+        if (!deviceId) {
+          // No device; just mark paused locally after delay
+          setTimeout(() => set({ isPlaying: false }), ms);
+          return;
+        }
+        setTimeout(() => {
+          fetch('/api/spotify/pause', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ device_id: deviceId })
+          }).finally(() => set({ isPlaying: false }));
+        }, ms);
+        return;
+      }
+
+      // Fallback to Web Audio pause
       state.pauseAudio({
         when: waitTimeSeconds,
       });
@@ -913,7 +988,12 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       const { sourceNode, audioContext } = getAudioPlayer(state);
 
       const stopTime = audioContext.currentTime + data.when;
-      sourceNode.stop(stopTime);
+      try {
+        sourceNode.stop(stopTime);
+      } catch (e) {
+        // Guard against InvalidStateError if start() was never called
+        console.warn('pauseAudio: sourceNode.stop failed (possibly not started yet)', e);
+      }
 
       // Calculate current position in the track at the time of pausing
       const elapsedSinceStart = stopTime - state.playbackStartTime;
@@ -1081,3 +1161,5 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
     setReconnectionInfo: (info) => set({ reconnectionInfo: info }),
   };
 });
+
+

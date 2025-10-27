@@ -2,6 +2,10 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  transpilePackages: ["@chorus/shared"],
+  experimental: {
+    externalDir: true,
+  },
   async rewrites() {
     return [
       {

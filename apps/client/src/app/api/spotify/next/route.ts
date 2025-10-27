@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Device ID is required" }, { status: 400 });
   }
 
-  const NEXT_ENDPOINT = `https://api.spotify.com/v1/me/player/play?device_id=$3{device_id}`;
+  const NEXT_ENDPOINT = `https://api.spotify.com/v1/me/player/next?device_id=${device_id}`;
   const response = await fetch(NEXT_ENDPOINT, {
     method: "POST",
     headers: {

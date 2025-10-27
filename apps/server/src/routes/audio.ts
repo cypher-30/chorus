@@ -1,4 +1,4 @@
-import { GetAudioSchema } from "@beatsync/shared";
+import { GetAudioSchema } from "@chorus/shared";
 import { Server } from "bun";
 import { errorResponse } from "../utils/responses";
 import { getPublicAudioUrl } from "../lib/r2";

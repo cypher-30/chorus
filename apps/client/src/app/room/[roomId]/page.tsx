@@ -6,9 +6,9 @@ import React from "react";
 export default function Page({
   params,
 }: {
-  params: Promise<{ roomId: string }>;
+  params: { roomId: string };
 }) {
-  const { roomId } = React.use(params);
+  const { roomId } = params;
 
   if (!validateFullRoomId(roomId)) {
     return (

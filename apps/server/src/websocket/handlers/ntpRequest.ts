@@ -1,4 +1,4 @@
-import { epochNow, ExtractWSRequestFrom } from "@beatsync/shared";
+import { epochNow, ExtractWSRequestFrom } from "@chorus/shared";
 import { sendUnicast } from "../../utils/responses";
 import { requireRoom } from "../middlewares";
 import { HandlerFunction } from "../types";
