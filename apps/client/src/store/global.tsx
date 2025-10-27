@@ -345,6 +345,9 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
     },
     setCurrentTrack: (track) => set({ currentTrack: track }),
     addToQueue: async (track) => {
+      // Duplicate prevention
+      const exists = get().trackQueue.some((t) => t.uri === track.uri) || get().currentTrack?.uri === track.uri;
+      if (exists) return;
       set((state) => ({ trackQueue: [...state.trackQueue, track] }));
       // Persist to server queue
       try {

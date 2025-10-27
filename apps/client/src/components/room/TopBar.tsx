@@ -111,7 +111,7 @@ export const TopBar = ({ roomId }: TopBarProps) => {
           <div className="hidden md:flex items-center space-x-2">
             <span>Offset: {clockOffset.toFixed(2)}ms</span>
             <span>
-              RTT: <span>{roundTripEstimate.toFixed(2)}</span>ms
+              RTT: {roundTripEstimate.toFixed(2)}ms
             </span>
           </div>
         </div>
@@ -172,3 +172,5 @@ function NowPlayingMini() {
     </div>
   );
 }
+
+

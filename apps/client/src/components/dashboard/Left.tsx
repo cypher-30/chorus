@@ -3,7 +3,8 @@
 import { cn } from "@/lib/utils";
 import { Library, Search } from "lucide-react";
 import { motion } from "motion/react";
-import { SpotifySearch } from "../SpotifySearch";
+import { SpotifyRecommendations } from "../spotify/SpotifyRecommendations";
+import { SpotifyPlaylists } from "../spotify/SpotifyPlaylists";
 import { Button } from "../ui/button";
 import { Separator } from "../ui/separator";
 import { AudioControls } from "./AudioControls";
@@ -75,12 +76,13 @@ export const Left = ({ className }: LeftProps) => {
       {/* Playback Controls */}
       <AudioControls />
 
-      {/* Spotify Search */}
-      <motion.div className="px-3.5 py-3">
-        <SpotifySearch />
+      {/* Recommendations and Playlists */}
+      <motion.div className="px-3.5 py-3 space-y-3">
+        <SpotifyRecommendations />
+        <SpotifyPlaylists />
       </motion.div>
 
-      {/* Tips Section (upload removed for Spotify-first) */}
+      {/* Footer spacer */}
       <motion.div className="mt-auto pb-4 pt-2 text-neutral-400" />
     </motion.div>
   );
