@@ -486,7 +486,11 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       if (trackQueue.length > 0 && spotifyDeviceId) {
         const index = isShuffled ? Math.floor(Math.random() * trackQueue.length) : 0;
         const nextTrack = trackQueue[index];
-        // First, play the track on Spotify
+        // Optimistically update and broadcast
+        set({ currentTrack: nextTrack, isPlaying: true });
+        get().broadcastSpotifyPlay(nextTrack);
+        set((state) => ({ trackQueue: state.trackQueue.filter((_, i) => i !== index) }));
+        // Play on Spotify device
         await fetch("/api/spotify/play", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -495,10 +499,6 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
             track_uri: nextTrack.uri,
           }),
         });
-        // Then, broadcast to sync everyone else
-        get().broadcastSpotifyPlay(nextTrack);
-        // Finally, remove it from the local queue
-        set((state) => ({ trackQueue: state.trackQueue.filter((_, i) => i !== index) }));
       } else {
         console.log("Queue is empty or device is not ready.");
         set({ currentTrack: null, isPlaying: false });

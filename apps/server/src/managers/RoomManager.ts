@@ -15,7 +15,7 @@ import { AudioSourceSchema, GRID } from "@chorus/shared/types/basic";
 import { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
 import { SCHEDULE_TIME_MS } from "../config";
-import { deleteObjectsWithPrefix } from "../lib/r2";
+import { deleteObjectsWithPrefix, downloadJSON } from "../lib/r2";
 import { calculateGainFromDistanceToSource } from "../spatial";
 import { sendBroadcast, sendUnicast } from "../utils/responses";
 import { positionClientsInCircle } from "../utils/spatial";
@@ -122,11 +122,29 @@ export class RoomManager {
 
     positionClientsInCircle(this.clients);
 
+    // Attempt restore of persisted queue on first client
+    if (this.audioSources.length === 0) {
+      this.restoreQueueIfAvailable().catch(() => {});
+    }
+
     // Idempotently start heartbeat checking
     this.startHeartbeatChecking();
 
     // Notify that client count changed
     this.onClientCountChange?.();
+  }
+
+  private async restoreQueueIfAvailable() {
+    try {
+      const key = `rooms/${this.roomId}/queue.json`;
+      const data = await downloadJSON<AudioSourceType[]>(key);
+      if (data && Array.isArray(data) && data.length > 0) {
+        this.audioSources = data;
+        console.log(`Restored queue for room ${this.roomId} with ${data.length} items`);
+      }
+    } catch (e) {
+      // ignore
+    }
   }
 
   /**

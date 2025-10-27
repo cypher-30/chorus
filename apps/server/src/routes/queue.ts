@@ -2,6 +2,7 @@ import { jsonResponse, errorResponse } from "../utils/responses";
 import { globalManager } from "../managers";
 import { Server } from "bun";
 import { AudioSourceType, WSBroadcastType } from "@chorus/shared";
+import { uploadJSON } from "../lib/r2";
 
 export async function handleQueueSet(req: Request, server: Server) {
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
@@ -20,6 +21,8 @@ export async function handleQueueSet(req: Request, server: Server) {
       event: { type: "SET_AUDIO_SOURCES", sources },
     };
     server.publish(roomId, JSON.stringify(message));
+    // Persist to R2
+    await uploadJSON(`rooms/${roomId}/queue.json`, updated);
     return jsonResponse({ ok: true });
   } catch (e) {
     return errorResponse("Failed to set queue", 500);
@@ -41,9 +44,10 @@ export async function handleQueueAdd(req: Request, server: Server) {
       event: { type: "SET_AUDIO_SOURCES", sources: updated },
     };
     server.publish(roomId, JSON.stringify(message));
+    // Persist to R2
+    await uploadJSON(`rooms/${roomId}/queue.json`, updated);
     return jsonResponse({ ok: true });
   } catch (e) {
     return errorResponse("Failed to add to queue", 500);
   }
 }
-
