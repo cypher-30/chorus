@@ -12,6 +12,7 @@ import { corsHeaders, errorResponse } from "./utils/responses";
 import { WSData } from "./utils/websocket";
 import { BackupManager } from "./managers/BackupManager";
 import { getActiveRooms } from "./routes/active";
+import { handleQueueAdd, handleQueueSet } from "./routes/queue";
 
 // Bun.serve with WebSocket support
 const server = Bun.serve<WSData, undefined>({
@@ -47,6 +48,12 @@ const server = Bun.serve<WSData, undefined>({
 
         case "/active-rooms":
           return getActiveRooms(req);
+
+        case "/queue/set":
+          return handleQueueSet(req, server);
+
+        case "/queue/add":
+          return handleQueueAdd(req, server);
 
         default:
           return errorResponse("Not found", 404);

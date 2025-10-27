@@ -97,6 +97,7 @@ interface GlobalStateValues {
   spotifyPositionMs?: number;
   spotifyDurationMs?: number;
   pendingSpotifyUri?: string;
+  previousTracks?: SpotifyTrack[];
 }
 
 interface GlobalState extends GlobalStateValues {
@@ -161,6 +162,7 @@ interface GlobalState extends GlobalStateValues {
   playQueuedTrack: (index: number) => void;
   removeFromQueue: (index: number) => void;
   reorderQueue: (from: number, to: number) => void;
+  playPreviousTrack: () => void;
 }
 
 // Define initial state values
@@ -203,6 +205,7 @@ const initialState: GlobalStateValues = {
   duration: 0,
   volume: 0.5,
   pendingSpotifyUri: undefined,
+  previousTracks: [],
   reconnectionInfo: {
     isReconnecting: false,
     currentAttempt: 0,
@@ -341,16 +344,35 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       }
     },
     setCurrentTrack: (track) => set({ currentTrack: track }),
-    addToQueue: (track) => {
+    addToQueue: async (track) => {
       set((state) => ({ trackQueue: [...state.trackQueue, track] }));
+      // Persist to server queue
+      try {
+        const roomId = useRoomStore.getState().roomId;
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/queue/add`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomId, source: { url: track.uri } }),
+        });
+      } catch {}
       if (!get().currentTrack) {
         get().broadcastSpotifyPlay(track);
       }
     },
-    removeFromQueue: (index) => {
+    removeFromQueue: async (index) => {
       set((state) => ({ trackQueue: state.trackQueue.filter((_, i) => i !== index) }));
+      // Push new order to server
+      try {
+        const roomId = useRoomStore.getState().roomId;
+        const sources = get().trackQueue.map((t) => ({ url: t.uri }));
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/queue/set`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomId, sources }),
+        });
+      } catch {}
     },
-    reorderQueue: (from, to) => {
+    reorderQueue: async (from, to) => {
       set((state) => {
         const q = [...state.trackQueue];
         if (from < 0 || from >= q.length || to < 0 || to >= q.length) return {} as any;
@@ -358,11 +380,25 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         q.splice(to, 0, item);
         return { trackQueue: q } as any;
       });
+      try {
+        const roomId = useRoomStore.getState().roomId;
+        const sources = get().trackQueue.map((t) => ({ url: t.uri }));
+        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/queue/set`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roomId, sources }),
+        });
+      } catch {}
     },
     broadcastSpotifyPlay: (track) => {
       const { socket } = get();
       if (!socket) return;
       console.log(`Broadcasting PLAY for Spotify track: ${track.name}`);
+      // push current into history before switching
+      const { currentTrack, previousTracks = [] } = get();
+      if (currentTrack && currentTrack.uri !== track.uri) {
+        set({ previousTracks: [...previousTracks, currentTrack] });
+      }
       set({ currentTrack: track, isPlaying: true }); // Set playing to true
       sendWSRequest({
         ws: socket,
@@ -473,6 +509,19 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       });
       get().broadcastSpotifyPlay(track);
       set((state) => ({ trackQueue: state.trackQueue.filter((_, i) => i !== index) }));
+    },
+    playPreviousTrack: async () => {
+      const { previousTracks = [], spotifyDeviceId } = get();
+      if (previousTracks.length === 0 || !spotifyDeviceId) return;
+      const prev = previousTracks[previousTracks.length - 1];
+      await fetch("/api/spotify/play", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ device_id: spotifyDeviceId, track_uri: prev.uri }),
+      });
+      // pop history
+      set((state) => ({ previousTracks: (state.previousTracks ?? []).slice(0, -1) }));
+      get().broadcastSpotifyPlay(prev);
     },
     // <<< END OF SPOTIFY METHODS >>>
 
@@ -1113,18 +1162,39 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
     },
 
     async handleSetAudioSources({ sources }) {
+      const spotifyUris = sources
+        .map((s) => s.url)
+        .filter((u) => u.startsWith("spotify:track:"));
+      if (spotifyUris.length > 0) {
+        try {
+          const ids = spotifyUris.map((u) => u.split(":").pop()).join(",");
+          const res = await fetch(`/api/spotify/tracks?ids=${encodeURIComponent(ids)}`);
+          if (res.ok) {
+            const data = await res.json();
+            const tracks = (data.tracks || []).map((t: any) => ({
+              uri: t.uri,
+              name: t.name,
+              artists: t.artists?.map((a: any) => ({ name: a.name })) ?? [],
+              album: { images: t.album?.images?.map((img: any) => ({ url: img.url })) ?? [] },
+            }));
+            // Exclude currentTrack from "up next" queue
+            const current = get().currentTrack;
+            const upNext = current ? tracks.filter((tr: any) => tr.uri !== current.uri) : tracks;
+            set({ trackQueue: upNext });
+          }
+        } catch (e) {
+          console.warn("Failed to fetch track metadata", e);
+        }
+      }
+
+      // Process any non-spotify audio (legacy)
       if (initializationMutex.isLocked()) {
         await initializationMutex.waitForUnlock();
       }
-
       const state = get();
-
       const newSources = sources.filter(
-        (source) => !state.audioCache.has(source.url)
+        (source) => !source.url.startsWith("spotify:") && !state.audioCache.has(source.url)
       );
-
-      console.log("newSources", newSources);
-
       for (const source of newSources) {
         await processNewAudioSource({ url: source.url });
       }

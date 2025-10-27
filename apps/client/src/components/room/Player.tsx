@@ -10,6 +10,7 @@ export const Player = () => {
   const isPlaying = useGlobalStore((s) => s.isPlaying);
   const togglePlayPause = useGlobalStore((s) => s.togglePlayPause);
   const playNextTrack = useGlobalStore((s) => s.playNextTrack);
+  const playPreviousTrack = useGlobalStore((s) => s.playPreviousTrack);
   const isShuffled = useGlobalStore((s) => s.isShuffled);
   const toggleShuffle = useGlobalStore((s) => s.toggleShuffle);
   const currentTrack = useGlobalStore((s) => s.currentTrack);
@@ -86,8 +87,8 @@ export const Player = () => {
   }, [togglePlayPause, isPlaying, posthog]);
 
   const handleSkipBack = useCallback(() => {
-    // no-op for now or implement previous queue item
-  }, []);
+    playPreviousTrack();
+  }, [playPreviousTrack]);
 
   const handleSkipForward = useCallback(() => {
     playNextTrack();

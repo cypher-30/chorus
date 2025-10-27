@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 import { motion } from "motion/react";
 import { SpotifySearch } from "../SpotifySearch";
 import { SpotifyQueue } from "../SpotifyQueue";
+import { DeviceBanner } from "../DeviceBanner";
 
 // This is your original 'Main' component
 export const Main = () => {
@@ -14,6 +15,7 @@ export const Main = () => {
       )}
     >
       <motion.div className="p-6 pt-4 space-y-6">
+        <DeviceBanner />
         <SpotifySearch />
         <SpotifyQueue />
       </motion.div>
