@@ -21,10 +21,16 @@ export const handleWebSocketUpgrade = (req: Request, server: Server) => {
       )}`
     );
 
-    return errorResponse("roomId and userId are required");
+    return errorResponse("roomId and username are required");
   }
 
-  const clientId = nanoid();
+  // Reuse a client-supplied stable ID so reconnects keep identity
+  // (admin status, spatial gains); fall back to a fresh nanoid
+  const requestedClientId = url.searchParams.get("clientId");
+  const clientId =
+    requestedClientId && /^[\w-]{8,64}$/.test(requestedClientId)
+      ? requestedClientId
+      : nanoid();
   console.log(`User ${username} joined room ${roomId} with userId ${clientId}`);
 
   const data: WSData = {

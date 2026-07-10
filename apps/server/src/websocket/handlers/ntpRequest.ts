@@ -15,6 +15,11 @@ export const handleNTPRequest: HandlerFunction<
   const { room } = requireRoom(ws);
   room.processNTPRequestFrom(ws.data.clientId);
 
+  // Track the client's RTT estimate for RTT-aware action scheduling
+  if (message.rtt !== undefined) {
+    room.setClientRTT(ws.data.clientId, message.rtt);
+  }
+
   sendUnicast({
     ws,
     message: {

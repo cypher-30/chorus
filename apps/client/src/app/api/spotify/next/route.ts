@@ -1,4 +1,4 @@
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/authOptions";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 
@@ -8,21 +8,26 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { device_id } = await req.json();
-  if (!device_id) {
-    return NextResponse.json({ error: "Device ID is required" }, { status: 400 });
-  }
+  try {
+    const { device_id } = await req.json();
+    if (!device_id) {
+      return NextResponse.json({ error: "Device ID is required" }, { status: 400 });
+    }
 
-  const NEXT_ENDPOINT = `https://api.spotify.com/v1/me/player/next?device_id=${device_id}`;
-  const response = await fetch(NEXT_ENDPOINT, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${session.accessToken}`,
-    },
-  });
+    const NEXT_ENDPOINT = `https://api.spotify.com/v1/me/player/next?device_id=${device_id}`;
+    const response = await fetch(NEXT_ENDPOINT, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${session.accessToken}`,
+      },
+    });
 
-  if (response.ok) {
-    return NextResponse.json({ success: true });
+    if (response.ok) {
+      return NextResponse.json({ success: true });
+    }
+    return NextResponse.json({ error: "Failed to skip" }, { status: response.status });
+  } catch (error) {
+    console.error("Spotify next error:", error);
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
-  return NextResponse.json({ error: "Failed to skip" }, { status: response.status });
 }

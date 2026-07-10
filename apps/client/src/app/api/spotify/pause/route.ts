@@ -1,4 +1,4 @@
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/authOptions";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 
@@ -31,6 +31,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ error: "Failed to pause", details: errorData }, { status: response.status });
     }
   } catch (error) {
+    console.error("Failed to pause Spotify playback", error);
     return NextResponse.json({ error: "Internal Server Error" }, { status: 500 });
   }
 }

@@ -19,7 +19,8 @@ export const handleSetAdmin: HandlerFunction<
       type: "ROOM_EVENT",
       event: {
         type: "CLIENT_CHANGE",
-        clients: room.getClients(),
+        clients: room.getClientDTOs(),
+        playbackControlsPermissions: room.getPlaybackControlsPermissions(),
       },
     },
   });

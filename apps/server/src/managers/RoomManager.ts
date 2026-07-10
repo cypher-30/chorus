@@ -1,5 +1,6 @@
 import {
   AudioSourceType,
+  ClientDTOType,
   ClientType,
   epochNow,
   NTP_CONSTANTS,
@@ -15,7 +16,12 @@ import { AudioSourceSchema, GRID } from "@chorus/shared/types/basic";
 import { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
 import { SCHEDULE_TIME_MS } from "../config";
-import { deleteObjectsWithPrefix, downloadJSON } from "../lib/r2";
+import {
+  deleteObjectsWithPrefix,
+  downloadJSON,
+  getQueueKey,
+  validateAudioFileExists,
+} from "../lib/r2";
 import { calculateGainFromDistanceToSource } from "../spatial";
 import { sendBroadcast, sendUnicast } from "../utils/responses";
 import { positionClientsInCircle } from "../utils/spatial";
@@ -34,7 +40,8 @@ interface RoomData {
 const BackupClientSchema = z.object({
   clientId: z.string(),
   username: z.string(),
-  isAdmin: z.boolean(),
+  // Older backups predate this field
+  isAdmin: z.boolean().default(false),
 });
 
 const RoomBackupSchema = z.object({
@@ -82,6 +89,32 @@ export class RoomManager {
   };
   private playbackControlsPermissions: PlaybackControlsPermissionsType =
     "EVERYONE";
+  // Server-authoritative queue state: bumped on every queue mutation so
+  // clients can discard stale SET_AUDIO_SOURCES events
+  private queueVersion = 0;
+  private shuffleEnabled = false;
+  // Last advance decision, used to dedupe PLAYBACK_ADVANCE intents arriving
+  // from multiple clients for the same track end
+  private lastAdvance?: { from: string; at: number };
+  private static readonly ADVANCE_DEDUPE_MS = 3000;
+  // Identity of recently disconnected clients, kept so reconnects with the
+  // same stable clientId restore admin status
+  private static readonly RECONNECT_GRACE_MS = 5 * 60 * 1000;
+  private recentlyDisconnected = new Map<
+    string,
+    { isAdmin: boolean; expiresAt: number }
+  >();
+
+  private pruneRecentlyDisconnected(): void {
+    const now = Date.now();
+    Array.from(this.recentlyDisconnected.entries()).forEach(
+      ([clientId, entry]) => {
+        if (entry.expiresAt <= now) {
+          this.recentlyDisconnected.delete(clientId);
+        }
+      }
+    );
+  }
 
   constructor(
     private readonly roomId: string,
@@ -106,8 +139,15 @@ export class RoomManager {
 
     const { username, clientId } = ws.data;
 
+    // A reconnecting client (same stable clientId) keeps its admin status —
+    // either its old entry is still present or it disconnected recently
+    this.pruneRecentlyDisconnected();
+    const previous =
+      this.clients.get(clientId) ?? this.recentlyDisconnected.get(clientId);
+    this.recentlyDisconnected.delete(clientId);
+
     // The first client to join a room will always be an admin
-    const isAdmin = this.clients.size === 0;
+    const isAdmin = this.clients.size === 0 || (previous?.isAdmin ?? false);
 
     // Add the new client
     this.clients.set(clientId, {
@@ -122,11 +162,6 @@ export class RoomManager {
 
     positionClientsInCircle(this.clients);
 
-    // Attempt restore of persisted queue on first client
-    if (this.audioSources.length === 0) {
-      this.restoreQueueIfAvailable().catch(() => {});
-    }
-
     // Idempotently start heartbeat checking
     this.startHeartbeatChecking();
 
@@ -134,13 +169,33 @@ export class RoomManager {
     this.onClientCountChange?.();
   }
 
-  private async restoreQueueIfAvailable() {
+  /**
+   * Restore a persisted queue from R2 into an empty room.
+   * Awaited by handleOpen so the first joiner receives the restored queue.
+   */
+  async restoreQueueIfAvailable(): Promise<void> {
+    if (this.audioSources.length > 0) return;
     try {
-      const key = `rooms/${this.roomId}/queue.json`;
-      const data = await downloadJSON<AudioSourceType[]>(key);
+      const data = await downloadJSON<AudioSourceType[]>(
+        getQueueKey(this.roomId)
+      );
       if (data && Array.isArray(data) && data.length > 0) {
-        this.audioSources = data;
-        console.log(`Restored queue for room ${this.roomId} with ${data.length} items`);
+        // Drop R2-hosted entries whose object has since been deleted;
+        // non-R2 sources (spotify: URIs) are kept as-is
+        const checks = await Promise.all(
+          data.map(async (source) => {
+            if (!source.url.startsWith("http")) return source;
+            return (await validateAudioFileExists(source.url)) ? source : null;
+          })
+        );
+        const valid = checks.filter(
+          (source): source is AudioSourceType => source !== null
+        );
+        if (valid.length === 0) return;
+        this.audioSources = valid;
+        console.log(
+          `Restored queue for room ${this.roomId} with ${valid.length}/${data.length} items`
+        );
       }
     } catch (e) {
       // ignore
@@ -148,9 +203,21 @@ export class RoomManager {
   }
 
   /**
-   * Remove a client from the room
+   * Remove a client from the room.
+   * Pass the closing socket so a stale close event (e.g. the old connection
+   * of a client that already reconnected) can't evict the fresh entry.
    */
-  removeClient(clientId: string): void {
+  removeClient(clientId: string, ws?: ServerWebSocket<WSData>): void {
+    const client = this.clients.get(clientId);
+    if (!client) return;
+    if (ws && client.ws !== ws) return;
+
+    // Remember identity briefly so a reconnect can restore it
+    this.recentlyDisconnected.set(clientId, {
+      isAdmin: client.isAdmin,
+      expiresAt: Date.now() + RoomManager.RECONNECT_GRACE_MS,
+    });
+
     this.clients.delete(clientId);
 
     // Reposition remaining clients if any
@@ -189,13 +256,101 @@ export class RoomManager {
    */
   addAudioSource(source: AudioSourceType): AudioSourceType[] {
     this.audioSources.push(source);
+    this.queueVersion++;
     return this.audioSources;
   }
 
   // Set all audio sources (used in backup restoration)
   setAudioSources(sources: AudioSourceType[]): AudioSourceType[] {
     this.audioSources = sources;
+    this.queueVersion++;
     return this.audioSources;
+  }
+
+  setShuffle(enabled: boolean): void {
+    this.shuffleEnabled = enabled;
+    this.queueVersion++;
+  }
+
+  /**
+   * Queue state for SET_AUDIO_SOURCES broadcasts. currentIndex is derived
+   * from playbackState so it always points at the room's current track.
+   */
+  getQueueState(): {
+    sources: AudioSourceType[];
+    currentIndex: number;
+    queueVersion: number;
+    shuffleEnabled: boolean;
+  } {
+    return {
+      sources: this.audioSources,
+      currentIndex: this.audioSources.findIndex(
+        (s) => s.url === this.playbackState.audioSource
+      ),
+      queueVersion: this.queueVersion,
+      shuffleEnabled: this.shuffleEnabled,
+    };
+  }
+
+  /**
+   * Decide the next track in response to a client PLAYBACK_ADVANCE intent.
+   * Returns the PLAY action to broadcast, or null when the intent is a
+   * duplicate/stale report and should be ignored. The server makes a single
+   * decision (including the shuffle pick) for the whole room.
+   */
+  advancePlayback(
+    fromAudioSource: string,
+    direction: "next" | "prev" = "next"
+  ): PlayActionType | null {
+    if (this.audioSources.length === 0) return null;
+
+    // Stale report: the client advanced from a track that is no longer the
+    // room's current track (another client's intent already won)
+    if (
+      this.playbackState.audioSource &&
+      fromAudioSource !== this.playbackState.audioSource
+    ) {
+      return null;
+    }
+
+    // Dedupe: multiple clients report the same track end within a window
+    const now = Date.now();
+    if (
+      this.lastAdvance &&
+      this.lastAdvance.from === fromAudioSource &&
+      now - this.lastAdvance.at < RoomManager.ADVANCE_DEDUPE_MS
+    ) {
+      return null;
+    }
+
+    const currentIndex = this.audioSources.findIndex(
+      (s) => s.url === fromAudioSource
+    );
+
+    let nextIndex: number;
+    if (this.shuffleEnabled && direction === "next") {
+      if (this.audioSources.length === 1) {
+        nextIndex = 0;
+      } else {
+        // Random pick that never repeats the current track
+        do {
+          nextIndex = Math.floor(Math.random() * this.audioSources.length);
+        } while (nextIndex === currentIndex);
+      }
+    } else {
+      const step = direction === "next" ? 1 : -1;
+      const base = currentIndex === -1 ? (direction === "next" ? -1 : 0) : currentIndex;
+      nextIndex =
+        (base + step + this.audioSources.length) % this.audioSources.length;
+    }
+
+    this.lastAdvance = { from: fromAudioSource, at: now };
+
+    return {
+      type: "PLAY",
+      audioSource: this.audioSources[nextIndex].url,
+      trackTimeSeconds: 0,
+    };
   }
 
   /**
@@ -203,6 +358,25 @@ export class RoomManager {
    */
   getClients(): ClientType[] {
     return Array.from(this.clients.values());
+  }
+
+  /**
+   * Wire-safe client list for CLIENT_CHANGE broadcasts (no ws handle)
+   */
+  getClientDTOs(): ClientDTOType[] {
+    return this.getClients().map(
+      ({ username, clientId, isAdmin, position, rtt }) => ({
+        username,
+        clientId,
+        isAdmin,
+        position,
+        rtt,
+      })
+    );
+  }
+
+  getPlaybackControlsPermissions(): PlaybackControlsPermissionsType {
+    return this.playbackControlsPermissions;
   }
 
   /**
@@ -267,6 +441,25 @@ export class RoomManager {
     if (!client) return;
     client.lastNtpResponse = Date.now();
     this.clients.set(clientId, client);
+  }
+
+  setClientRTT(clientId: string, rtt: number): void {
+    const client = this.clients.get(clientId);
+    if (!client) return;
+    client.rtt = rtt;
+  }
+
+  /**
+   * Scheduling delay for room-wide actions: enough for the slowest client's
+   * round trip plus margin, floored at SCHEDULE_TIME_MS and capped at 1s so
+   * one bad connection can't make everyone wait forever.
+   */
+  getScheduleDelayMs(): number {
+    let maxRtt = 0;
+    Array.from(this.clients.values()).forEach((client) => {
+      if (client.rtt > maxRtt) maxRtt = client.rtt;
+    });
+    return Math.min(Math.max(maxRtt + 100, SCHEDULE_TIME_MS), 1000);
   }
 
   /**
@@ -427,7 +620,22 @@ export class RoomManager {
 
     // Determine if we are currently playing or paused
     if (this.playbackState.type === "paused") {
-      return; // Nothing to do - client will play on next scheduled action
+      // Still tell the late joiner what's paused and where, so their UI can
+      // show the current track + position (nothing plays)
+      if (!this.playbackState.audioSource) return;
+      sendUnicast({
+        ws,
+        message: {
+          type: "SCHEDULED_ACTION",
+          scheduledAction: {
+            type: "PAUSE",
+            audioSource: this.playbackState.audioSource,
+            trackTimeSeconds: this.playbackState.trackPositionSeconds,
+          },
+          serverTimeToExecute: epochNow(),
+        },
+      });
+      return;
     }
 
     const serverTimeWhenPlaybackStarted =
@@ -435,7 +643,7 @@ export class RoomManager {
     const trackPositionSecondsWhenPlaybackStarted =
       this.playbackState.trackPositionSeconds;
     const now = epochNow();
-    const serverTimeToExecute = now + SCHEDULE_TIME_MS;
+    const serverTimeToExecute = now + this.getScheduleDelayMs();
 
     // Calculate how much time has elapsed since playback started
     const timeElapsedSincePlaybackStarted = now - serverTimeWhenPlaybackStarted;

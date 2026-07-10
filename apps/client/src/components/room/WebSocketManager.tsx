@@ -1,9 +1,12 @@
 "use client";
+import { getStableClientId } from "@/lib/room";
 import { useGlobalStore } from "@/store/global";
 import { useRoomStore } from "@/store/room";
 import { useNtpHeartbeat } from "@/hooks/useNtpHeartbeat";
 import { NTPMeasurement } from "@/utils/ntp";
+import { sendWSRequest } from "@/utils/ws";
 import {
+  ClientActionEnum,
   epochNow,
   NTPResponseMessageType,
   WSResponseSchema,
@@ -71,6 +74,9 @@ export const WebSocketManager = ({
   const handleSetAudioSources = useGlobalStore(
     (state) => state.handleSetAudioSources
   );
+  const lastMessageReceivedTime = useGlobalStore(
+    (state) => state.lastMessageReceivedTime
+  );
 
   // <<< START OF SPOTIFY CHANGES >>>
   const playSpotifyTrack = useGlobalStore((state) => state.playSpotifyTrack);
@@ -97,7 +103,8 @@ export const WebSocketManager = ({
   });
 
   const createConnection = () => {
-    const SOCKET_URL = `${process.env.NEXT_PUBLIC_WS_URL}?roomId=${roomId}&username=${username}`;
+    const clientId = getStableClientId(roomId);
+    const SOCKET_URL = `${process.env.NEXT_PUBLIC_WS_URL}?roomId=${roomId}&username=${username}&clientId=${clientId}`;
     console.log("Creating new WS connection to", SOCKET_URL);
 
     // Clear previous connection if it exists
@@ -121,6 +128,23 @@ export const WebSocketManager = ({
 
       // Start NTP heartbeat
       startHeartbeat();
+
+      // Resync playback after a reconnect: wait until the NTP offset is
+      // re-established (measurements were cleared on close), then ask the
+      // server where the room is.
+      if (useGlobalStore.getState().hasUserStartedSystem) {
+        const unsubscribe = useGlobalStore.subscribe((state) => {
+          if (state.isSynced) {
+            unsubscribe();
+            if (ws.readyState === WebSocket.OPEN) {
+              sendWSRequest({
+                ws,
+                request: { type: ClientActionEnum.enum.SYNC },
+              });
+            }
+          }
+        });
+      }
     };
 
     // This onclose event will only fire on unwanted websocket disconnects:
@@ -142,6 +166,9 @@ export const WebSocketManager = ({
       // Update last message received time for connection health
       useGlobalStore.setState({ lastMessageReceivedTime: Date.now() });
 
+      // A throw while handling one message must not kill processing of
+      // subsequent messages, so contain everything below.
+      try {
       const response = WSResponseSchema.parse(JSON.parse(msg.data));
 
       if (response.type === "NTP_RESPONSE") {
@@ -156,8 +183,16 @@ export const WebSocketManager = ({
 
         if (event.type === "CLIENT_CHANGE") {
           setConnectedClients(event.clients);
+          useGlobalStore
+            .getState()
+            .setPlaybackControlsPermissions(event.playbackControlsPermissions);
         } else if (event.type === "SET_AUDIO_SOURCES") {
-          handleSetAudioSources({ sources: event.sources });
+          handleSetAudioSources({
+            sources: event.sources,
+            currentIndex: event.currentIndex,
+            queueVersion: event.queueVersion,
+            shuffleEnabled: event.shuffleEnabled,
+          });
         }
       } else if (response.type === "SCHEDULED_ACTION") {
         // handle scheduling action
@@ -168,7 +203,10 @@ export const WebSocketManager = ({
           // <<< START OF SPOTIFY CHANGES >>>
           // Check if the audioSource is a Spotify URI
           if (scheduledAction.audioSource.startsWith("spotify:track")) {
-            playSpotifyTrack(scheduledAction.audioSource);
+            playSpotifyTrack(
+              scheduledAction.audioSource,
+              scheduledAction.trackTimeSeconds
+            );
           } else {
             // Fallback to the old audio engine if needed
             schedulePlay({
@@ -181,6 +219,8 @@ export const WebSocketManager = ({
         } else if (scheduledAction.type === "PAUSE") {
           schedulePause({
             targetServerTime: serverTimeToExecute,
+            audioSource: scheduledAction.audioSource,
+            trackTimeSeconds: scheduledAction.trackTimeSeconds,
           });
         } else if (scheduledAction.type === "SPATIAL_CONFIG") {
           processSpatialConfig(scheduledAction);
@@ -195,10 +235,36 @@ export const WebSocketManager = ({
       } else {
         console.log("Unknown response type:", response);
       }
+      } catch (error) {
+        console.error("Failed to handle WS message:", error, msg.data);
+      }
     };
 
     return ws;
   };
+
+  // Resync when the tab returns to the foreground — background throttling
+  // may have paused timers and drifted playback
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") return;
+      const { socket, hasUserStartedSystem, isSynced } =
+        useGlobalStore.getState();
+      if (
+        socket?.readyState === WebSocket.OPEN &&
+        hasUserStartedSystem &&
+        isSynced
+      ) {
+        sendWSRequest({
+          ws: socket,
+          request: { type: ClientActionEnum.enum.SYNC },
+        });
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () =>
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, []);
 
   // Once room has been loaded, connect to the websocket
   useEffect(() => {
@@ -232,6 +298,23 @@ export const WebSocketManager = ({
     // Not including socket in the dependency array because it will trigger the close when it's set
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoadingRoom, roomId, username]);
+
+  // Auto-close stale sockets to trigger reconnection
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const currentSocket = useGlobalStore.getState().socket;
+      if (!currentSocket) return;
+      if (currentSocket.readyState !== WebSocket.OPEN) return;
+      if (
+        lastMessageReceivedTime &&
+        Date.now() - lastMessageReceivedTime > 15000
+      ) {
+        console.warn("Socket stale, closing to trigger reconnection");
+        currentSocket.close();
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [lastMessageReceivedTime]);
 
   return null; // This is a non-visual component
 };

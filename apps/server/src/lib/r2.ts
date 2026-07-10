@@ -99,6 +99,14 @@ export async function validateAudioFileExists(
 }
 
 /**
+ * R2 key for a room's persisted queue. Lives under the same `room-{id}/`
+ * prefix as uploaded audio so room cleanup and orphan scans cover it.
+ */
+export function getQueueKey(roomId: string): string {
+  return `room-${roomId}/queue.json`;
+}
+
+/**
  * Generate a unique file name for audio uploads
  */
 export function generateAudioFileName(originalName: string): string {
@@ -127,7 +135,7 @@ export function generateAudioFileName(originalName: string): string {
 
   // Generate timestamp with date and random component
   const now = new Date();
-  const dateStr = now.toISOString().replace(":", "-");
+  const dateStr = now.toISOString().replace(/[:.]/g, "-");
 
   return `${safeName}${R2_AUDIO_FILE_NAME_DELIMITER}${dateStr}.${extension}`;
 }
@@ -365,7 +373,11 @@ export async function cleanupOrphanedRooms(
       );
     }
 
-    const roomObjects = await listObjectsWithPrefix("room-");
+    // Legacy queue persistence wrote under `rooms/{id}/...` — sweep both prefixes
+    const roomObjects = [
+      ...((await listObjectsWithPrefix("room-")) ?? []),
+      ...((await listObjectsWithPrefix("rooms/")) ?? []),
+    ];
 
     if (!roomObjects || roomObjects.length === 0) {
       console.log("  ✅ No room objects found in R2. Nothing to clean up!");
@@ -379,7 +391,9 @@ export async function cleanupOrphanedRooms(
 
     roomObjects.forEach((obj) => {
       if (obj.Key) {
-        const match = obj.Key.match(/^room-([^\/]+)\//);
+        const match =
+          obj.Key.match(/^room-([^\/]+)\//) ??
+          obj.Key.match(/^rooms\/([^\/]+)\//);
         if (match) {
           const roomId = match[1];
           if (!roomsInR2.has(roomId)) {
@@ -434,10 +448,13 @@ export async function cleanupOrphanedRooms(
       for (const roomId of orphanedRooms) {
         try {
           const deleteResult = await deleteObjectsWithPrefix(`room-${roomId}`);
-          console.log(
-            `    ✅ Deleted room-${roomId}: ${deleteResult.deletedCount} files`
+          const legacyResult = await deleteObjectsWithPrefix(
+            `rooms/${roomId}/`
           );
-          totalDeleted += deleteResult.deletedCount;
+          const deletedCount =
+            deleteResult.deletedCount + legacyResult.deletedCount;
+          console.log(`    ✅ Deleted room-${roomId}: ${deletedCount} files`);
+          totalDeleted += deletedCount;
         } catch (error) {
           const errorMsg = `Failed to delete room-${roomId}: ${error}`;
           console.error(`    ❌ ${errorMsg}`);

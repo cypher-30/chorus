@@ -17,3 +17,6 @@ export const AudioSourceSchema = z.object({
   url: z.string(),
 });
 export type AudioSourceType = z.infer<typeof AudioSourceSchema>;
+
+// Room codes are always 6 digits (see client-side validateFullRoomId)
+export const RoomIdSchema = z.string().regex(/^\d{6}$/);

@@ -66,6 +66,11 @@ export const AudioUploaderMinimal = () => {
   const onInputChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    // make sure we only allow audio files
+    if (!file.type.startsWith("audio/")) {
+      toast.error("Please select an audio file");
+      return;
+    }
     handleFileUpload(file);
   };
 

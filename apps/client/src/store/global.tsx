@@ -10,12 +10,13 @@ import { sendWSRequest } from "@/utils/ws";
 import {
   AudioSourceType,
   ClientActionEnum,
-  ClientType,
+  ClientDTOType,
   GRID,
   PositionType,
   SpatialConfigType,
   NTP_CONSTANTS,
-  PlaybackControlsPermissionsEnum,
+  PlaybackControlsPermissionsType,
+  epochNow,
 } from "@chorus/shared";
 import { toast } from "sonner";
 import { create } from "zustand";
@@ -64,7 +65,8 @@ interface GlobalStateValues {
   isSpatialAudioEnabled: boolean;
 
   // Connected clients
-  connectedClients: ClientType[];
+  connectedClients: ClientDTOType[];
+  playbackControlsPermissions: PlaybackControlsPermissionsType;
 
   // NTP
   ntpMeasurements: NTPMeasurement[];
@@ -82,9 +84,18 @@ interface GlobalStateValues {
   // Tracking properties
   playbackStartTime: number;
   playbackOffset: number;
+  _lastAutoAdvanceTime?: number;
 
   // Shuffle state
   isShuffled: boolean;
+  // Last SET_AUDIO_SOURCES version applied; stale (lower) events are dropped
+  queueVersion: number;
+  // Latest measured playback drift vs the room's server-time anchor (ms,
+  // positive = this client is ahead). Web Audio path only.
+  lastDriftMs: number;
+  // Manual per-device timing adjustment (ms, positive = play earlier).
+  // Honored by drift correction as an intentional offset.
+  totalNudgeMs: number;
   reconnectionInfo: {
     isReconnecting: boolean;
     currentAttempt: number;
@@ -99,12 +110,22 @@ interface GlobalStateValues {
   spotifyDurationMs?: number;
   pendingSpotifyUri?: string;
   previousTracks?: SpotifyTrack[];
+  skipDuplicates: boolean;
 }
 
 interface GlobalState extends GlobalStateValues {
   // Methods
   getAudioDuration: ({ url }: { url: string }) => number;
-  handleSetAudioSources: ({ sources }: { sources: AudioSourceType[] }) => void;
+  handleSetAudioSources: (data: {
+    sources: AudioSourceType[];
+    currentIndex?: number;
+    queueVersion?: number;
+    shuffleEnabled?: boolean;
+  }) => void;
+  sendPlaybackAdvance: (data: {
+    audioSource: string;
+    direction?: "next" | "prev";
+  }) => void;
 
   setIsInitingSystem: (isIniting: boolean) => void;
   reorderClient: (clientId: string) => void;
@@ -115,7 +136,11 @@ interface GlobalState extends GlobalStateValues {
     targetServerTime: number;
     audioSource: string;
   }) => void;
-  schedulePause: (data: { targetServerTime: number }) => void;
+  schedulePause: (data: {
+    targetServerTime: number;
+    audioSource?: string;
+    trackTimeSeconds?: number;
+  }) => void;
   setSocket: (socket: WebSocket) => void;
   broadcastPlay: (trackTimeSeconds?: number) => void;
   broadcastPause: () => void;
@@ -127,7 +152,13 @@ interface GlobalState extends GlobalStateValues {
   setIsDraggingListeningSource: (isDragging: boolean) => void;
   setIsSpatialAudioEnabled: (isEnabled: boolean) => void;
   processStopSpatialAudio: () => void;
-  setConnectedClients: (clients: ClientType[]) => void;
+  setConnectedClients: (clients: ClientDTOType[]) => void;
+  setPlaybackControlsPermissions: (
+    permissions: PlaybackControlsPermissionsType
+  ) => void;
+  sendPlaybackControls: (
+    permissions: PlaybackControlsPermissionsType
+  ) => void;
   sendNTPRequest: () => void;
   resetNTPConfig: () => void;
   addNTPMeasurement: (measurement: NTPMeasurement) => void;
@@ -140,6 +171,7 @@ interface GlobalState extends GlobalStateValues {
   processSpatialConfig: (config: SpatialConfigType) => void;
   pauseAudio: (data: { when: number }) => void;
   getCurrentTrackPosition: () => number;
+  nudgeAudio: (deltaMs: number) => void;
   toggleShuffle: () => void;
   setShuffle: (enabled: boolean) => void;
   skipToNextTrack: (isAutoplay?: boolean) => void;
@@ -155,15 +187,17 @@ interface GlobalState extends GlobalStateValues {
   // Spotify Methods
   setSpotifyDeviceId: (deviceId: string | null) => void;
   setCurrentTrack: (track: SpotifyTrack | null) => void;
-  addToQueue: (track: SpotifyTrack) => void;
-  broadcastSpotifyPlay: (track: SpotifyTrack) => void;
-  playSpotifyTrack: (trackUri: string) => void;
+  addToQueue: (track: SpotifyTrack) => Promise<boolean>;
+  broadcastSpotifyPlay: (track: SpotifyTrack, trackTimeSeconds?: number) => void;
+  playSpotifyTrack: (trackUri: string, positionSeconds?: number) => void;
   togglePlayPause: () => void;
   playNextTrack: () => void;
   setSpotifyPlaybackState: (data: { positionMs?: number; durationMs?: number; isPlaying?: boolean }) => void;
   playQueuedTrack: (index: number) => void;
   removeFromQueue: (index: number) => void;
   reorderQueue: (from: number, to: number) => void;
+  clearQueue: () => Promise<void>;
+  setSkipDuplicates: (value: boolean) => void;
   playPreviousTrack: () => void;
   onTrackEnded: () => void;
 }
@@ -183,6 +217,9 @@ const initialState: GlobalStateValues = {
 
   // Spatial audio
   isShuffled: false,
+  queueVersion: 0,
+  lastDriftMs: 0,
+  totalNudgeMs: 0,
   isSpatialAudioEnabled: false,
   isDraggingListeningSource: false,
   listeningSourcePosition: { x: GRID.SIZE / 2, y: GRID.SIZE / 2 },
@@ -192,6 +229,7 @@ const initialState: GlobalStateValues = {
   socket: null,
   lastMessageReceivedTime: null,
   connectedClients: [],
+  playbackControlsPermissions: "EVERYONE",
 
   // NTP state
   ntpMeasurements: [],
@@ -214,11 +252,13 @@ const initialState: GlobalStateValues = {
     currentAttempt: 0,
     maxAttempts: 0,
   },
+  _lastAutoAdvanceTime: undefined,
 
   // Spotify State
   spotifyDeviceId: null,
   trackQueue: [],
   currentTrack: null,
+  skipDuplicates: true,
 };
 
 const getAudioPlayer = (state: GlobalState) => {
@@ -270,7 +310,36 @@ const initializeAudioContext = () => {
 
 const initializationMutex = new Mutex();
 
+// Bounded retry state for the "track not loaded yet" re-SYNC loop
+const MAX_SYNC_RETRIES = 5;
+let syncRetryCount = 0;
+
+// Continuous drift correction (Web Audio path). The anchor is the last
+// server-scheduled PLAY: expected position = anchor position + server-clock
+// time elapsed since the anchor. AudioContext clock skew vs the NTP-derived
+// server clock shows up as drift, corrected by playbackRate nudges (small)
+// or a seamless restart (large).
+const DRIFT_CHECK_INTERVAL_MS = 5000;
+const DRIFT_IGNORE_MS = 15;
+const DRIFT_NUDGE_MAX_MS = 75;
+const DRIFT_NUDGE_RATE = 0.003; // ±0.3% playback rate
+const DRIFT_RESTART_LOOKAHEAD_S = 0.1;
+let driftIntervalId: ReturnType<typeof setInterval> | null = null;
+let driftAnchor: { serverTime: number; trackPositionSeconds: number } | null =
+  null;
+let driftNudgeRate = 0; // currently applied rate delta (e.g. -0.003)
+let driftAppliedNudgeSeconds = 0; // cumulative position shift from nudges
+let driftLastCheckCtxTime = 0;
+
 export const useGlobalStore = create<GlobalState>((set, get) => {
+  const capture = (event: string, properties?: Record<string, unknown>) => {
+    if (typeof window === "undefined") return;
+    const ph =
+      (window as unknown as { posthog?: { capture?: (e: string, p?: Record<string, unknown>) => void } })
+        .posthog;
+    ph?.capture?.(event, properties);
+  };
+
   const processNewAudioSource = async ({ url }: AudioSourceType) => {
     console.log(`Processing new audio source ${url}`);
     const state = get();
@@ -320,6 +389,84 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
     });
   };
 
+  const stopDriftCorrection = () => {
+    if (driftIntervalId) {
+      clearInterval(driftIntervalId);
+      driftIntervalId = null;
+    }
+    driftNudgeRate = 0;
+    driftAppliedNudgeSeconds = 0;
+  };
+
+  const startDriftCorrection = () => {
+    stopDriftCorrection();
+    const player = get().audioPlayer;
+    if (!player) return;
+    driftLastCheckCtxTime = player.audioContext.currentTime;
+
+    driftIntervalId = setInterval(() => {
+      const state = get();
+      const player = state.audioPlayer;
+      if (!state.isPlaying || !player || !driftAnchor || !state.isSynced) {
+        return;
+      }
+      const { audioContext, sourceNode } = player;
+
+      const nowCtx = audioContext.currentTime;
+      // The rate-1 estimate doesn't see playbackRate nudges, so accumulate
+      // their effect to know the real output position
+      driftAppliedNudgeSeconds +=
+        driftNudgeRate * (nowCtx - driftLastCheckCtxTime);
+      driftLastCheckCtxTime = nowCtx;
+
+      const estimated =
+        state.playbackOffset + (nowCtx - state.playbackStartTime);
+      const actual = estimated + driftAppliedNudgeSeconds;
+
+      const serverNow = epochNow() + state.offsetEstimate;
+      // The user's manual nudge is an intentional offset, not drift
+      const expected =
+        driftAnchor.trackPositionSeconds +
+        (serverNow - driftAnchor.serverTime) / 1000 +
+        state.totalNudgeMs / 1000;
+
+      const driftMs = (actual - expected) * 1000;
+      set({ lastDriftMs: driftMs });
+
+      if (Math.abs(driftMs) < DRIFT_IGNORE_MS) {
+        if (driftNudgeRate !== 0) {
+          driftNudgeRate = 0;
+          sourceNode.playbackRate.value = 1;
+        }
+        return;
+      }
+
+      if (Math.abs(driftMs) <= DRIFT_NUDGE_MAX_MS) {
+        // Ahead of the room → play slightly slower; behind → slightly faster
+        const rate = driftMs > 0 ? -DRIFT_NUDGE_RATE : DRIFT_NUDGE_RATE;
+        if (rate !== driftNudgeRate) {
+          driftNudgeRate = rate;
+          sourceNode.playbackRate.value = 1 + rate;
+        }
+        return;
+      }
+
+      // Large drift: seamless restart at the corrected position
+      const audioIndex = state.findAudioIndexByUrl(state.selectedAudioUrl);
+      if (audioIndex === null) return;
+      console.log(
+        `Drift ${driftMs.toFixed(1)}ms exceeds ${DRIFT_NUDGE_MAX_MS}ms, restarting at corrected offset`
+      );
+      driftNudgeRate = 0;
+      driftAppliedNudgeSeconds = 0;
+      state.playAudio({
+        offset: expected + DRIFT_RESTART_LOOKAHEAD_S,
+        when: DRIFT_RESTART_LOOKAHEAD_S,
+        audioIndex,
+      });
+    }, DRIFT_CHECK_INTERVAL_MS);
+  };
+
   if (typeof window !== "undefined") {
     // @ts-expect-error only exists for iOS
     if (window.navigator.audioSession) {
@@ -341,62 +488,120 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       const { pendingSpotifyUri } = get();
       if (deviceId && pendingSpotifyUri) {
         // Try to start pending track now that the device is ready
-        get()
-          .playSpotifyTrack(pendingSpotifyUri)
-          .finally(() => set({ pendingSpotifyUri: undefined }));
+        get().playSpotifyTrack(pendingSpotifyUri);
+        set({ pendingSpotifyUri: undefined });
       }
     },
     setCurrentTrack: (track) => set({ currentTrack: track }),
-    addToQueue: async (track) => {
-      // Duplicate prevention
-      const exists = get().trackQueue.some((t) => t.uri === track.uri) || get().currentTrack?.uri === track.uri;
-      if (exists) return;
-      set((state) => ({ trackQueue: [...state.trackQueue, track] }));
-      // Persist to server queue
+  addToQueue: async (track) => {
+      const { trackQueue, currentTrack, skipDuplicates } = get();
+      const exists =
+        trackQueue.some((t) => t.uri === track.uri) ||
+        currentTrack?.uri === track.uri;
+      if (exists && skipDuplicates) return false;
+
+      // Persist to server queue first
       try {
         const roomId = useRoomStore.getState().roomId;
-        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/queue/add`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/queue/add`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ roomId, source: { url: track.uri } }),
         });
-      } catch {}
+        if (!res.ok) throw new Error("Queue add failed");
+      } catch (error) {
+        capture("playlist_import_failure", {
+          reason: "queue_add_failed",
+          track_uri: track.uri,
+        });
+        return false;
+      }
+
+      set((state) => ({ trackQueue: [...state.trackQueue, track] }));
+
       if (!get().currentTrack) {
         get().broadcastSpotifyPlay(track);
       }
+      return true;
     },
     removeFromQueue: async (index) => {
-      set((state) => ({ trackQueue: state.trackQueue.filter((_, i) => i !== index) }));
-      // Push new order to server
+      const { trackQueue, audioSources } = get();
+      const target = trackQueue[index];
+      if (!target) return;
+      const previousQueue = trackQueue;
+      // Remove from the full server list, not just the up-next view
+      const sources = (() => {
+        const removeIdx = audioSources.findIndex((s) => s.url === target.uri);
+        return removeIdx === -1
+          ? audioSources
+          : audioSources.filter((_, i) => i !== removeIdx);
+      })();
+      set({ trackQueue: trackQueue.filter((_, i) => i !== index) });
       try {
         const roomId = useRoomStore.getState().roomId;
-        const sources = get().trackQueue.map((t) => ({ url: t.uri }));
-        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/queue/set`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/queue/set`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ roomId, sources }),
         });
-      } catch {}
+        if (!res.ok) throw new Error(`queue/set failed: ${res.status}`);
+      } catch (e) {
+        console.error("Failed to remove from queue", e);
+        set({ trackQueue: previousQueue });
+        toast.error("Failed to update the queue");
+      }
     },
     reorderQueue: async (from, to) => {
-      set((state) => {
-        const q = [...state.trackQueue];
-        if (from < 0 || from >= q.length || to < 0 || to >= q.length) return {} as any;
-        const [item] = q.splice(from, 1);
-        q.splice(to, 0, item);
-        return { trackQueue: q } as any;
-      });
+      const { trackQueue, audioSources } = get();
+      if (from < 0 || from >= trackQueue.length || to < 0 || to >= trackQueue.length) return;
+      const previousQueue = trackQueue;
+
+      const q = [...trackQueue];
+      const [item] = q.splice(from, 1);
+      q.splice(to, 0, item);
+      set({ trackQueue: q });
+
+      // Apply the same move to the full server list
+      const fromIdx = audioSources.findIndex((s) => s.url === trackQueue[from].uri);
+      const toIdx = audioSources.findIndex((s) => s.url === trackQueue[to].uri);
+      const sources = [...audioSources];
+      if (fromIdx !== -1 && toIdx !== -1) {
+        const [moved] = sources.splice(fromIdx, 1);
+        sources.splice(toIdx, 0, moved);
+      }
       try {
         const roomId = useRoomStore.getState().roomId;
-        const sources = get().trackQueue.map((t) => ({ url: t.uri }));
-        await fetch(`${process.env.NEXT_PUBLIC_API_URL}/queue/set`, {
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/queue/set`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ roomId, sources }),
         });
-      } catch {}
+        if (!res.ok) throw new Error(`queue/set failed: ${res.status}`);
+      } catch (e) {
+        console.error("Failed to reorder queue", e);
+        set({ trackQueue: previousQueue });
+        toast.error("Failed to reorder the queue");
+      }
     },
-    broadcastSpotifyPlay: (track) => {
+    clearQueue: async () => {
+      const { trackQueue, currentTrack, previousTracks } = get();
+      set({ trackQueue: [], currentTrack: null, previousTracks: [] });
+      try {
+        const roomId = useRoomStore.getState().roomId;
+        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/queue/set`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ roomId, sources: [] }),
+        });
+        if (!res.ok) throw new Error(`queue/set failed: ${res.status}`);
+      } catch (e) {
+        console.error("Failed to clear queue", e);
+        set({ trackQueue, currentTrack, previousTracks });
+        toast.error("Failed to clear the queue");
+      }
+    },
+    setSkipDuplicates: (value: boolean) => set({ skipDuplicates: value }),
+    broadcastSpotifyPlay: (track, trackTimeSeconds = 0) => {
       const { socket } = get();
       if (!socket) return;
       console.log(`Broadcasting PLAY for Spotify track: ${track.name}`);
@@ -411,11 +616,11 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         request: {
           type: ClientActionEnum.enum.PLAY,
           audioSource: track.uri,
-          trackTimeSeconds: 0,
+          trackTimeSeconds,
         },
       });
     },
-    playSpotifyTrack: async (trackUri) => {
+    playSpotifyTrack: async (trackUri, positionSeconds = 0) => {
       const { spotifyDeviceId } = get();
       if (!spotifyDeviceId) {
         console.error("Cannot play Spotify track, no device ID available.");
@@ -435,6 +640,7 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
           body: JSON.stringify({
             device_id: spotifyDeviceId,
             track_uri: trackUri,
+            position_ms: Math.max(0, Math.floor(positionSeconds * 1000)),
           }),
         });
         if (!response.ok) {
@@ -443,7 +649,10 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         }
       } catch (error) {
         console.error("Error playing spotify track:", error);
-        toast.error(`Spotify playback error: ${error.message}`);
+        const message =
+          error instanceof Error ? error.message : "Unknown error";
+        toast.error(`Spotify playback error: ${message}`);
+        capture("playback_failure", { message, track_uri: trackUri });
       }
     },
     togglePlayPause: async () => {
@@ -461,17 +670,17 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         get().broadcastPause();
         set({ isPlaying: false });
       } else {
-        // If music is paused, call the PLAY endpoint to resume
+        // If music is paused, resume in place: omitting track_uri makes the
+        // route send an empty-body PUT, which Spotify treats as "resume"
+        // rather than "restart this track"
+        const resumePositionSeconds = (get().spotifyPositionMs ?? 0) / 1000;
         await fetch("/api/spotify/play", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            device_id: spotifyDeviceId,
-            track_uri: currentTrack.uri,
-          }),
+          body: JSON.stringify({ device_id: spotifyDeviceId }),
         });
-        // Broadcast play of current track to room
-        get().broadcastSpotifyPlay(currentTrack);
+        // Broadcast play of current track at the resume position
+        get().broadcastSpotifyPlay(currentTrack, resumePositionSeconds);
         set({ isPlaying: true });
       }
     },
@@ -483,39 +692,32 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       }));
     },
     playNextTrack: async () => {
-      const { trackQueue, spotifyDeviceId, isShuffled } = get();
-      if (trackQueue.length > 0 && spotifyDeviceId) {
-        const index = isShuffled ? Math.floor(Math.random() * trackQueue.length) : 0;
-        const nextTrack = trackQueue[index];
-        // Optimistically update and broadcast
-        set({ currentTrack: nextTrack, isPlaying: true });
-        get().broadcastSpotifyPlay(nextTrack);
-        set((state) => ({ trackQueue: state.trackQueue.filter((_, i) => i !== index) }));
-        // Play on Spotify device
-        await fetch("/api/spotify/play", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            device_id: spotifyDeviceId,
-            track_uri: nextTrack.uri,
-          }),
-        });
+      const { currentTrack, trackQueue } = get();
+      if (currentTrack) {
+        // Server decides the next track (one decision per room)
+        get().sendPlaybackAdvance({ audioSource: currentTrack.uri });
+        return;
+      }
+      // Nothing playing yet: start the first queued track
+      if (trackQueue.length > 0) {
+        get().broadcastSpotifyPlay(trackQueue[0]);
       } else {
-        console.log("Queue is empty or device is not ready.");
-        set({ currentTrack: null, isPlaying: false });
+        console.log("Queue is empty.");
+        set({ isPlaying: false });
       }
     }, onTrackEnded: () => {
-      const { trackQueue } = get();
-      if (trackQueue.length === 0) {
+      const { currentTrack } = get();
+      if (!currentTrack) {
         set({ isPlaying: false });
         return;
       }
-      // Debounce auto-advance
+      // Local debounce as a cheap pre-filter; the server dedupe across
+      // clients is the real guard
       const now = Date.now();
-      const last = (useGlobalStore.getState() as any)._lastAutoAdvanceTime as number | undefined;
+      const last = useGlobalStore.getState()._lastAutoAdvanceTime;
       if (last && now - last < 1500) return;
-      (useGlobalStore.getState() as any)._lastAutoAdvanceTime = now;
-      get().playNextTrack();
+      set({ _lastAutoAdvanceTime: now });
+      get().sendPlaybackAdvance({ audioSource: currentTrack.uri });
     },
     playQueuedTrack: async (index: number) => {
       const { trackQueue, spotifyDeviceId } = get();
@@ -530,17 +732,12 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       set((state) => ({ trackQueue: state.trackQueue.filter((_, i) => i !== index) }));
     },
     playPreviousTrack: async () => {
-      const { previousTracks = [], spotifyDeviceId } = get();
-      if (previousTracks.length === 0 || !spotifyDeviceId) return;
-      const prev = previousTracks[previousTracks.length - 1];
-      await fetch("/api/spotify/play", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ device_id: spotifyDeviceId, track_uri: prev.uri }),
+      const { currentTrack } = get();
+      if (!currentTrack) return;
+      get().sendPlaybackAdvance({
+        audioSource: currentTrack.uri,
+        direction: "prev",
       });
-      // pop history
-      set((state) => ({ previousTracks: (state.previousTracks ?? []).slice(0, -1) }));
-      get().broadcastSpotifyPlay(prev);
     },
     // <<< END OF SPOTIFY METHODS >>>
 
@@ -697,22 +894,39 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         console.error(
           `Cannot play audio: No index found: ${data.audioSource} ${data.trackTimeSeconds}`
         );
+
+        if (syncRetryCount >= MAX_SYNC_RETRIES) {
+          toast.error(
+            `Could not load "${extractFileNameFromUrl(data.audioSource)}" — it may have been removed.`,
+            { id: "schedulePlay" }
+          );
+          return;
+        }
+        syncRetryCount++;
         toast.error(
           `"${extractFileNameFromUrl(data.audioSource)}" not loaded yet...`,
           { id: "schedulePlay" }
         );
 
-        // Resend the sync request in a couple seconds
+        // Resend the sync request with backoff
         const { socket } = getSocket(state);
         setTimeout(() => {
           sendWSRequest({
             ws: socket,
             request: { type: ClientActionEnum.enum.SYNC },
           });
-        }, 1000);
+        }, 1000 * syncRetryCount);
 
         return;
       }
+      syncRetryCount = 0;
+
+      // Anchor for continuous drift correction: where the room's track
+      // should be at any later server time
+      driftAnchor = {
+        serverTime: data.targetServerTime,
+        trackPositionSeconds: data.trackTimeSeconds,
+      };
 
       state.playAudio({
         offset: data.trackTimeSeconds,
@@ -721,10 +935,31 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       });
     },
 
-    schedulePause: ({ targetServerTime }: { targetServerTime: number }) => {
+    schedulePause: ({ targetServerTime, audioSource, trackTimeSeconds }) => {
       const state = get();
       const waitTimeSeconds = getWaitTimeSeconds(state, targetServerTime);
       console.log(`Pausing track in ${waitTimeSeconds}`);
+
+      // Late join to a paused room: adopt the room's current track and
+      // position without starting playback
+      if (audioSource && trackTimeSeconds !== undefined && !state.isPlaying) {
+        if (audioSource.startsWith("spotify:track")) {
+          const trackInQueue = state.trackQueue.find(
+            (t) => t.uri === audioSource
+          );
+          set({
+            ...(trackInQueue && state.currentTrack?.uri !== audioSource
+              ? { currentTrack: trackInQueue }
+              : {}),
+            spotifyPositionMs: trackTimeSeconds * 1000,
+          });
+          return;
+        }
+        if (state.selectedAudioUrl !== audioSource) {
+          set({ selectedAudioUrl: audioSource, currentTime: trackTimeSeconds });
+          return;
+        }
+      }
 
       // If current track is Spotify, schedule a Spotify pause
       if (state.currentTrack && state.currentTrack.uri?.startsWith("spotify:track")) {
@@ -752,6 +987,22 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
     },
 
     setSocket: (socket) => set({ socket }),
+
+    // Report a track end / skip intent; the server dedupes across clients,
+    // picks the next track once (including the shuffle roll) and broadcasts
+    // a single PLAY + updated queue state
+    sendPlaybackAdvance: ({ audioSource, direction = "next" }) => {
+      const state = get();
+      const { socket } = getSocket(state);
+      sendWSRequest({
+        ws: socket,
+        request: {
+          type: ClientActionEnum.enum.PLAYBACK_ADVANCE,
+          audioSource,
+          direction,
+        },
+      });
+    },
 
     // if trackTimeSeconds is not provided, use the current track position
     broadcastPlay: (trackTimeSeconds?: number) => {
@@ -783,12 +1034,18 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       const state = get();
       const { socket } = getSocket(state);
 
+      // Spotify tracks report position via the SDK, not the Web Audio clock
+      const isSpotify = state.currentTrack?.uri?.startsWith("spotify:track");
       sendWSRequest({
         ws: socket,
         request: {
           type: ClientActionEnum.enum.PAUSE,
-          trackTimeSeconds: state.getCurrentTrackPosition(),
-          audioSource: state.selectedAudioUrl,
+          trackTimeSeconds: isSpotify
+            ? (state.spotifyPositionMs ?? 0) / 1000
+            : state.getCurrentTrackPosition(),
+          audioSource: isSpotify
+            ? state.currentTrack!.uri
+            : state.selectedAudioUrl,
         },
       });
     },
@@ -833,7 +1090,7 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       const { socket } = getSocket(state);
 
       // Always send NTP request for continuous heartbeat
-      _sendNTPRequest(socket);
+      _sendNTPRequest(socket, state.roundTripEstimate);
 
       // Show warning if latency is high
       if (state.isSynced && state.roundTripEstimate > 750) {
@@ -853,13 +1110,12 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
     addNTPMeasurement: (measurement) =>
       set((state) => {
         let measurements = [...state.ntpMeasurements];
+        let isSynced = state.isSynced;
 
         // Rolling queue: keep only last MAX_NTP_MEASUREMENTS
         if (measurements.length >= MAX_NTP_MEASUREMENTS) {
           measurements = [...measurements.slice(1), measurement];
-          if (!state.isSynced) {
-            set({ isSynced: true });
-          }
+          isSynced = true;
         } else {
           measurements.push(measurement);
         }
@@ -872,6 +1128,7 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
           ntpMeasurements: measurements,
           offsetEstimate: averageOffset,
           roundTripEstimate: averageRoundTrip,
+          isSynced,
         };
       }),
     onConnectionReset: () => {
@@ -1019,6 +1276,34 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         playbackOffset: data.offset,
         duration: audioBuffer.duration, // Set the duration
       }));
+
+      startDriftCorrection();
+    },
+
+    nudgeAudio: (deltaMs) => {
+      const state = get();
+      set({ totalNudgeMs: state.totalNudgeMs + deltaMs });
+
+      // Apply immediately to Web Audio playback via a seamless restart at
+      // the shifted position (positive = jump forward / play earlier)
+      if (
+        state.isPlaying &&
+        state.selectedAudioUrl &&
+        !state.currentTrack?.uri?.startsWith("spotify:track")
+      ) {
+        const audioIndex = state.findAudioIndexByUrl(state.selectedAudioUrl);
+        if (audioIndex === null) return;
+        const newOffset =
+          state.getCurrentTrackPosition() +
+          deltaMs / 1000 +
+          DRIFT_RESTART_LOOKAHEAD_S;
+        if (newOffset < 0) return;
+        state.playAudio({
+          offset: newOffset,
+          when: DRIFT_RESTART_LOOKAHEAD_S,
+          audioIndex,
+        });
+      }
     },
 
     processSpatialConfig: (config: SpatialConfigType) => {
@@ -1031,9 +1316,11 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         set({ listeningSourcePosition: listeningSource });
       }
 
-      // Extract out what this client's gain is:
+      // Extract out what this client's gain is; the config may not include
+      // this client (e.g. right after a reconnect minted a new clientId)
       const userId = useRoomStore.getState().userId;
       const user = gains[userId];
+      if (!user) return;
       const { gain, rampTime } = user;
 
       // Process
@@ -1054,6 +1341,9 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
     pauseAudio: (data: { when: number }) => {
       const state = get();
       const { sourceNode, audioContext } = getAudioPlayer(state);
+
+      stopDriftCorrection();
+      driftAnchor = null;
 
       const stopTime = audioContext.currentTime + data.when;
       try {
@@ -1090,77 +1380,56 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
     },
 
     setConnectedClients: (clients) => set({ connectedClients: clients }),
+    setPlaybackControlsPermissions: (permissions) =>
+      set({ playbackControlsPermissions: permissions }),
+    sendPlaybackControls: (permissions) => {
+      const state = get();
+      const { socket } = getSocket(state);
+      sendWSRequest({
+        ws: socket,
+        request: {
+          type: ClientActionEnum.enum.SET_PLAYBACK_CONTROLS,
+          permissions,
+        },
+      });
+    },
 
     skipToNextTrack: (isAutoplay = false) => {
-      // Accept optional isAutoplay flag
       const state = get();
-      const {
-        audioSources: audioSources,
-        selectedAudioUrl: selectedAudioId,
-        isShuffled,
-      } = state;
-      if (audioSources.length <= 1) return; // Can't skip if only one track
+      const { audioSources, selectedAudioUrl } = state;
+      if (audioSources.length <= 1 && !isAutoplay) return; // Can't skip if only one track
+      if (!selectedAudioUrl) return;
 
-      const currentIndex = state.findAudioIndexByUrl(selectedAudioId);
-      if (currentIndex === null) return;
-
-      let nextIndex: number;
-      if (isShuffled) {
-        // Shuffle logic: pick a random index DIFFERENT from the current one
-        do {
-          nextIndex = Math.floor(Math.random() * audioSources.length);
-        } while (nextIndex === currentIndex);
-      } else {
-        // Normal sequential logic
-        nextIndex = (currentIndex + 1) % audioSources.length;
-      }
-
-      const nextAudioId = audioSources[nextIndex].url;
-      const wasPlayingBeforeSkip = state.setSelectedAudioUrl(nextAudioId);
-
-      if (wasPlayingBeforeSkip || isAutoplay) {
-        console.log(
-          `Skip to next: ${nextAudioId}. Was playing: ${wasPlayingBeforeSkip}, Is autoplay: ${isAutoplay}. Broadcasting play.`
-        );
-        state.broadcastPlay(0); // Play next track from start
-      } else {
-        console.log(
-          `Skip to next: ${nextAudioId}. Was playing: ${wasPlayingBeforeSkip}, Is autoplay: ${isAutoplay}. Not broadcasting play.`
-        );
-      }
+      // The server picks the next track (including the shuffle roll) and
+      // broadcasts one PLAY to the whole room
+      state.sendPlaybackAdvance({ audioSource: selectedAudioUrl });
     },
 
     skipToPreviousTrack: () => {
       const state = get();
-      const {
-        audioSources,
-        selectedAudioUrl: selectedAudioId,
-      } = state;
-      if (audioSources.length === 0) return;
+      const { audioSources, selectedAudioUrl } = state;
+      if (audioSources.length === 0 || !selectedAudioUrl) return;
 
-      const currentIndex = state.findAudioIndexByUrl(selectedAudioId);
-      if (currentIndex === null) return;
-
-      const prevIndex =
-        (currentIndex - 1 + audioSources.length) % audioSources.length;
-      const prevAudioId = audioSources[prevIndex].url;
-
-      const wasPlayingBeforeSkip = state.setSelectedAudioUrl(prevAudioId);
-
-      if (wasPlayingBeforeSkip) {
-        console.log(
-          `Skip to previous: ${prevAudioId}. Was playing: ${wasPlayingBeforeSkip}. Broadcasting play.`
-        );
-        state.broadcastPlay(0); // Play previous track from start
-      } else {
-        console.log(
-          `Skip to previous: ${prevAudioId}. Was playing: ${wasPlayingBeforeSkip}. Not broadcasting play.`
-        );
-      }
+      state.sendPlaybackAdvance({
+        audioSource: selectedAudioUrl,
+        direction: "prev",
+      });
     },
 
-    toggleShuffle: () => set((state) => ({ isShuffled: !state.isShuffled })),
-    setShuffle: (enabled) => set({ isShuffled: enabled }),
+    toggleShuffle: () => get().setShuffle(!get().isShuffled),
+    setShuffle: (enabled) => {
+      // Optimistic local update; the server confirms via SET_AUDIO_SOURCES
+      set({ isShuffled: enabled });
+      const { socket } = get();
+      if (!socket) return;
+      sendWSRequest({
+        ws: socket,
+        request: {
+          type: ClientActionEnum.enum.SET_SHUFFLE,
+          enabled,
+        },
+      });
+    },
 
     setIsSpatialAudioEnabled: (isEnabled) =>
       set({ isSpatialAudioEnabled: isEnabled }),
@@ -1181,7 +1450,19 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       return audioBuffer.duration;
     },
 
-    async handleSetAudioSources({ sources }) {
+    async handleSetAudioSources({
+      sources,
+      currentIndex = -1,
+      queueVersion = 0,
+      shuffleEnabled = false,
+    }) {
+      // Drop stale events that arrive out of order
+      if (queueVersion < get().queueVersion) return;
+      set({ queueVersion, isShuffled: shuffleEnabled });
+
+      const currentUrl =
+        currentIndex >= 0 ? sources[currentIndex]?.url : undefined;
+
       const spotifyUris = sources
         .map((s) => s.url)
         .filter((u) => u.startsWith("spotify:track:"));
@@ -1191,20 +1472,38 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
           const res = await fetch(`/api/spotify/tracks?ids=${encodeURIComponent(ids)}`);
           if (res.ok) {
             const data = await res.json();
-            const tracks = (data.tracks || []).map((t: any) => ({
+            const tracks: SpotifyTrack[] = (data.tracks || []).map((t: SpotifyTrack) => ({
               uri: t.uri,
               name: t.name,
-              artists: t.artists?.map((a: any) => ({ name: a.name })) ?? [],
-              album: { images: t.album?.images?.map((img: any) => ({ url: img.url })) ?? [] },
+              artists: (t.artists ?? []).map((a) => ({ name: a.name })),
+              album: { images: (t.album?.images ?? []).map((img) => ({ url: img.url })) },
             }));
-            // Exclude currentTrack from "up next" queue
-            const current = get().currentTrack;
-            const upNext = current ? tracks.filter((tr: any) => tr.uri !== current.uri) : tracks;
-            set({ trackQueue: upNext });
+            const byUri = new Map(tracks.map((t) => [t.uri, t]));
+            // "Up next" is the queue order after the server's current track;
+            // when nothing is playing, the whole queue is up next
+            const currentPos = currentUrl ? spotifyUris.indexOf(currentUrl) : -1;
+            const upNextUris =
+              currentPos >= 0 ? spotifyUris.slice(currentPos + 1) : spotifyUris;
+            const upNext = upNextUris
+              .map((u) => byUri.get(u))
+              .filter((t): t is SpotifyTrack => !!t);
+
+            const updates: Partial<GlobalStateValues> = { trackQueue: upNext };
+            // Adopt the room's current track when the server points at a
+            // Spotify source this client isn't showing yet
+            if (currentUrl?.startsWith("spotify:track:")) {
+              const meta = byUri.get(currentUrl);
+              if (meta && get().currentTrack?.uri !== currentUrl) {
+                updates.currentTrack = meta;
+              }
+            }
+            set(updates);
           }
         } catch (e) {
           console.warn("Failed to fetch track metadata", e);
         }
+      } else {
+        set({ trackQueue: [] });
       }
 
       // Process any non-spotify audio (legacy)
@@ -1218,10 +1517,16 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       for (const source of newSources) {
         await processNewAudioSource({ url: source.url });
       }
+      // Adopt the full server list (covers removals/reorders; buffers for
+      // web-audio entries live in audioCache)
+      set({ audioSources: sources });
     },
 
     resetStore: () => {
       const state = get();
+
+      stopDriftCorrection();
+      driftAnchor = null;
 
       const preservedAudioCache = state.audioCache;
 

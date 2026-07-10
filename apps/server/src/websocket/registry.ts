@@ -5,6 +5,8 @@ import { handleMoveClient } from "./handlers/moveClient";
 import { handleNTPRequest } from "./handlers/ntpRequest";
 import { handlePause } from "./handlers/pause";
 import { handlePlay } from "./handlers/play";
+import { handlePlaybackAdvance } from "./handlers/playbackAdvance";
+import { handleSetShuffle } from "./handlers/setShuffle";
 import { handleReorderClient } from "./handlers/reorderClient";
 import { handleSetListeningSource } from "./handlers/setListeningSource";
 import { handleStartSpatialAudio } from "./handlers/startSpatialAudio";
@@ -65,5 +67,15 @@ export const WS_REGISTRY: WebsocketRegistry = {
   [ClientActionEnum.enum.SET_PLAYBACK_CONTROLS]: {
     handle: handleSetPlaybackControls,
     description: "Set playback controls for a room",
+  },
+
+  [ClientActionEnum.enum.PLAYBACK_ADVANCE]: {
+    handle: handlePlaybackAdvance,
+    description: "Advance to the next/previous track (server decides once)",
+  },
+
+  [ClientActionEnum.enum.SET_SHUFFLE]: {
+    handle: handleSetShuffle,
+    description: "Toggle room-wide shuffle",
   },
 };

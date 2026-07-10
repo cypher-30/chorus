@@ -1,7 +1,10 @@
 "use client";
+/* eslint-disable @next/next/no-img-element */
 import { SOCIAL_LINKS } from "@/constants";
+import { useCanControlPlayback } from "@/hooks/useCanControlPlayback";
 import { MAX_NTP_MEASUREMENTS, useGlobalStore } from "@/store/global";
 import { useRoomStore } from "@/store/room";
+import { PlaybackControlsPermissionsType } from "@chorus/shared";
 import { Crown, Hash, Users, Pause, Play } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import Link from "next/link";
@@ -26,6 +29,12 @@ export const TopBar = ({ roomId }: TopBarProps) => {
     (client) => client.clientId === userId
   );
   const isAdmin = currentUser?.isAdmin || false;
+  const playbackControlsPermissions = useGlobalStore(
+    (state) => state.playbackControlsPermissions
+  );
+  const sendPlaybackControls = useGlobalStore(
+    (state) => state.sendPlaybackControls
+  );
 
   // Show minimal nav bar when synced and not loading
   if (!isLoadingAudio && isSynced) {
@@ -112,6 +121,23 @@ export const TopBar = ({ roomId }: TopBarProps) => {
               </span>
             </span>
           </div>
+          {isAdmin && (
+            <div className="hidden md:flex items-center gap-1">
+              <span className="text-neutral-500">Controls:</span>
+              <select
+                className="bg-neutral-800 text-[11px] px-1 py-0.5 rounded border border-neutral-700"
+                value={playbackControlsPermissions}
+                onChange={(e) =>
+                  sendPlaybackControls(
+                    e.target.value as PlaybackControlsPermissionsType
+                  )
+                }
+              >
+                <option value="EVERYONE">Everyone</option>
+                <option value="ADMIN_ONLY">Admins only</option>
+              </select>
+            </div>
+          )}
           {/* Hide separator on small screens */}
           <div className="hidden md:block">|</div>
           {/* Hide Offset/RTT on small screens */}
@@ -170,17 +196,22 @@ function NowPlayingMini() {
   const currentTrack = useGlobalStore((s) => s.currentTrack);
   const isPlaying = useGlobalStore((s) => s.isPlaying);
   const togglePlayPause = useGlobalStore((s) => s.togglePlayPause);
+  const canControlPlayback = useCanControlPlayback();
   if (!currentTrack) return null;
   return (
     <div className="hidden md:flex items-center gap-2 max-w-[28rem]">
       {currentTrack.album.images?.[2]?.url && (
-        <img src={currentTrack.album.images[2].url} className="w-5 h-5" />
+        <img src={currentTrack.album.images[2].url} className="w-5 h-5" alt={currentTrack.name} />
       )}
       <div className="truncate max-w-[20rem]">
         <span className="text-white truncate mr-1">{currentTrack.name}</span>
-        <span className="text-neutral-500 truncate">– {currentTrack.artists.map(a=>a.name).join(', ')}</span>
+        <span className="text-neutral-500 truncate">- {currentTrack.artists.map((a) => a.name).join(", ")}</span>
       </div>
-      <button onClick={togglePlayPause} className="text-neutral-300 hover:text-white">
+      <button
+        onClick={togglePlayPause}
+        className="text-neutral-300 hover:text-white disabled:opacity-50"
+        disabled={!canControlPlayback}
+      >
         {isPlaying ? <Pause className="w-3.5 h-3.5"/> : <Play className="w-3.5 h-3.5"/>}
       </button>
     </div>

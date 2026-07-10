@@ -12,6 +12,7 @@ import { corsHeaders, errorResponse } from "./utils/responses";
 import { WSData } from "./utils/websocket";
 import { BackupManager } from "./managers/BackupManager";
 import { getActiveRooms } from "./routes/active";
+import { handleRoomExists } from "./routes/roomExists";
 import { handleQueueAdd, handleQueueSet } from "./routes/queue";
 
 // Bun.serve with WebSocket support
@@ -48,6 +49,9 @@ const server = Bun.serve<WSData, undefined>({
 
         case "/active-rooms":
           return getActiveRooms(req);
+
+        case "/room-exists":
+          return handleRoomExists(req);
 
         case "/queue/set":
           return handleQueueSet(req, server);

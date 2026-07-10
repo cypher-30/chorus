@@ -1,15 +1,16 @@
 import { epochNow, ExtractWSRequestFrom } from "@chorus/shared";
 import { SCHEDULE_TIME_MS } from "../../config";
 import { sendBroadcast } from "../../utils/responses";
-import { requireRoom } from "../middlewares";
+import { requirePlaybackPermission } from "../middlewares";
 import { HandlerFunction } from "../types";
 
 export const handlePlay: HandlerFunction<
   ExtractWSRequestFrom["PLAY"]
 > = async ({ ws, message, server }) => {
-  const { room } = requireRoom(ws);
+  const { room } = requirePlaybackPermission(ws);
 
-  const serverTimeToExecute = epochNow() + SCHEDULE_TIME_MS;
+  // RTT-aware: wait long enough for the slowest client to receive this
+  const serverTimeToExecute = epochNow() + room.getScheduleDelayMs();
 
   // Update playback state
   room.updatePlaybackSchedulePlay(message, serverTimeToExecute);
@@ -21,7 +22,6 @@ export const handlePlay: HandlerFunction<
       type: "SCHEDULED_ACTION",
       scheduledAction: message,
       serverTimeToExecute: serverTimeToExecute,
-      // TODO: Make the longest RTT + some amount instead of hardcoded this breaks for long RTTs
     },
   });
 };

@@ -10,19 +10,25 @@ import { sendBroadcast, sendUnicast } from "../utils/responses";
 import { WSData } from "../utils/websocket";
 import { dispatchMessage } from "../websocket/dispatch";
 
-const createClientUpdate = (roomId: string) => {
+export const createClientUpdate = (roomId: string) => {
   const room = globalManager.getRoom(roomId);
   const message: WSBroadcastType = {
     type: "ROOM_EVENT",
     event: {
       type: "CLIENT_CHANGE",
-      clients: room ? room.getClients() : [],
+      clients: room ? room.getClientDTOs() : [],
+      playbackControlsPermissions: room
+        ? room.getPlaybackControlsPermissions()
+        : "EVERYONE",
     },
   };
   return message;
 };
 
-export const handleOpen = (ws: ServerWebSocket<WSData>, server: Server) => {
+export const handleOpen = async (
+  ws: ServerWebSocket<WSData>,
+  server: Server
+) => {
   console.log(
     `WebSocket connection opened for user ${ws.data.username} in room ${ws.data.roomId}`
   );
@@ -40,6 +46,10 @@ export const handleOpen = (ws: ServerWebSocket<WSData>, server: Server) => {
   const room = globalManager.getOrCreateRoom(roomId);
   room.addClient(ws);
 
+  // Restore any persisted queue before reading state, so the first client
+  // into a cold room receives it (no-op when the room already has sources)
+  await room.restoreQueueIfAvailable();
+
   // Send audio sources to the newly joined client if any exist
   const { audioSources } = room.getState();
   if (audioSources.length > 0) {
@@ -50,7 +60,7 @@ export const handleOpen = (ws: ServerWebSocket<WSData>, server: Server) => {
       type: "ROOM_EVENT",
       event: {
         type: "SET_AUDIO_SOURCES",
-        sources: audioSources,
+        ...room.getQueueState(),
       },
     };
     // Send directly to the WebSocket since this is a broadcast-type message sent to a single client
@@ -109,7 +119,7 @@ export const handleClose = async (
     const room = globalManager.getRoom(roomId);
 
     if (room) {
-      room.removeClient(clientId);
+      room.removeClient(clientId, ws);
 
       // Schedule cleanup for rooms with no active connections
       if (!room.hasActiveConnections()) {

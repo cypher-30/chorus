@@ -51,7 +51,7 @@ export const Join = () => {
   const { data: numActiveUsers } = useQuery({
     queryKey: ["active-rooms"],
     queryFn: fetchActiveRooms,
-    refetchInterval: 300,
+    refetchInterval: 10_000,
   });
 
   const router = useRouter();
@@ -66,9 +66,27 @@ export const Join = () => {
     router.push(`/room/${data.roomId}`);
   };
 
-  const handleCreateRoom = () => {
+  const handleCreateRoom = async () => {
     setIsCreating(true);
-    const newRoomId = Math.floor(100000 + Math.random() * 900000).toString();
+    const generateRoomId = () =>
+      Math.floor(100000 + Math.random() * 900000).toString();
+
+    // Best-effort collision check so "Create room" doesn't drop the user
+    // into a stranger's live session
+    let newRoomId = generateRoomId();
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const res = await fetch(
+          `${process.env.NEXT_PUBLIC_API_URL}/room-exists?roomId=${newRoomId}`
+        );
+        if (!res.ok) break;
+        const { exists } = await res.json();
+        if (!exists) break;
+        newRoomId = generateRoomId();
+      } catch {
+        break; // server unreachable — proceed with the generated code
+      }
+    }
     router.push(`/room/${newRoomId}`);
   };
 

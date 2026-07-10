@@ -17,12 +17,15 @@ export const ClientActionEnum = z.enum([
   "SYNC", // Client joins late, requests sync
   "SET_ADMIN", // Set admin status
   "SET_PLAYBACK_CONTROLS", // Set playback controls
+  "PLAYBACK_ADVANCE", // Client reports track ended / requests next-prev; server decides
+  "SET_SHUFFLE", // Toggle room-wide shuffle (server picks the shuffle order)
 ]);
 
 export const NTPRequestPacketSchema = z.object({
   type: z.literal(ClientActionEnum.enum.NTP_REQUEST),
   t0: z.number(), // Client send timestamp
   t1: z.number().optional(), // Server receive timestamp (will be set by the server)
+  rtt: z.number().nonnegative().optional(), // Client's current RTT estimate (ms)
 });
 
 export const PlayActionSchema = z.object({
@@ -87,6 +90,20 @@ const SetPlaybackControlsSchema = z.object({
   permissions: PlaybackControlsPermissionsEnum,
 });
 
+// The client reports which track ended (or the user skipped from); the
+// server dedupes across clients and decides the next track
+const PlaybackAdvanceSchema = z.object({
+  type: z.literal(ClientActionEnum.enum.PLAYBACK_ADVANCE),
+  audioSource: z.string(),
+  direction: z.enum(["next", "prev"]).default("next"),
+});
+export type PlaybackAdvanceType = z.infer<typeof PlaybackAdvanceSchema>;
+
+const SetShuffleSchema = z.object({
+  type: z.literal(ClientActionEnum.enum.SET_SHUFFLE),
+  enabled: z.boolean(),
+});
+
 export const WSRequestSchema = z.discriminatedUnion("type", [
   PlayActionSchema,
   PauseActionSchema,
@@ -99,6 +116,8 @@ export const WSRequestSchema = z.discriminatedUnion("type", [
   ClientRequestSyncSchema,
   SetAdminSchema,
   SetPlaybackControlsSchema,
+  PlaybackAdvanceSchema,
+  SetShuffleSchema,
 ]);
 export type WSRequestType = z.infer<typeof WSRequestSchema>;
 export type PlayActionType = z.infer<typeof PlayActionSchema>;

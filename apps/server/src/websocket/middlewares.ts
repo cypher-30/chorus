@@ -39,3 +39,22 @@ export const requireRoomAdmin = (
   }
   return { room };
 };
+
+/**
+ * Playback-affecting actions (play/pause/seek/advance) honor the room's
+ * playbackControlsPermissions setting.
+ */
+export const requirePlaybackPermission = (
+  ws: ServerWebSocket<WSData>
+): { room: RoomManager } => {
+  const { room } = requireRoom(ws);
+  if (room.getPlaybackControlsPermissions() === "ADMIN_ONLY") {
+    const client = room.getClient(ws.data.clientId);
+    if (!client?.isAdmin) {
+      throw new Error(
+        `Client ${ws.data.clientId} cannot control playback: room ${ws.data.roomId} is admin-only`
+      );
+    }
+  }
+  return { room };
+};

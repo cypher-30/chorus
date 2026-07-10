@@ -1,10 +1,14 @@
 import { z } from "zod";
-import { PauseActionSchema, PlayActionSchema } from "./WSRequest";
+import {
+  PauseActionSchema,
+  PlayActionSchema,
+  PlaybackControlsPermissionsEnum,
+} from "./WSRequest";
 import { AudioSourceSchema, PositionSchema } from "./basic";
 
 // ROOM EVENTS
 
-// Client change
+// Server-side client record (includes the live ws handle — never broadcast)
 const ClientSchema = z.object({
   username: z.string(),
   clientId: z.string(),
@@ -15,15 +19,32 @@ const ClientSchema = z.object({
   isAdmin: z.boolean().default(false), // Admin status
 });
 export type ClientType = z.infer<typeof ClientSchema>;
+
+// Wire-safe client shape sent in CLIENT_CHANGE broadcasts
+export const ClientDTOSchema = z.object({
+  username: z.string(),
+  clientId: z.string(),
+  rtt: z.number().nonnegative().default(0),
+  position: PositionSchema,
+  isAdmin: z.boolean().default(false),
+});
+export type ClientDTOType = z.infer<typeof ClientDTOSchema>;
+
 const ClientChangeMessageSchema = z.object({
   type: z.literal("CLIENT_CHANGE"),
-  clients: z.array(ClientSchema),
+  clients: z.array(ClientDTOSchema),
+  playbackControlsPermissions: PlaybackControlsPermissionsEnum,
 });
 
-// Set audio sources
+// Set audio sources. currentIndex points at the room's current track within
+// sources (-1 when nothing is playing); queueVersion increments on every
+// server-side queue mutation.
 const SetAudioSourcesSchema = z.object({
   type: z.literal("SET_AUDIO_SOURCES"),
   sources: z.array(AudioSourceSchema),
+  currentIndex: z.number().int().default(-1),
+  queueVersion: z.number().int().default(0),
+  shuffleEnabled: z.boolean().default(false),
 });
 export type SetAudioSourcesType = z.infer<typeof SetAudioSourcesSchema>;
 

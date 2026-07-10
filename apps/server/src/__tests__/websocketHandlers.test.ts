@@ -12,6 +12,14 @@ mock.module("../utils/responses", () => ({
   errorResponse: mock(() => new Response()),
 }));
 
+// Mock R2 so queue restore in handleOpen never touches the network
+mock.module("../lib/r2", () => ({
+  downloadJSON: mock(async () => null),
+  uploadJSON: mock(async () => {}),
+  deleteObjectsWithPrefix: mock(async () => ({ deletedCount: 0 })),
+  getQueueKey: (roomId: string) => `room-${roomId}/queue.json`,
+}));
+
 describe("WebSocket Handlers (Simplified Tests)", () => {
   beforeEach(async () => {
     // Clear all rooms before each test
@@ -22,7 +30,7 @@ describe("WebSocket Handlers (Simplified Tests)", () => {
   });
 
   describe("Audio Source Restoration", () => {
-    it("should send existing audio sources to newly joined client", () => {
+    it("should send existing audio sources to newly joined client", async () => {
       // Create a room with audio sources (simulating restored state)
       const roomId = "restored-room";
       const room = globalManager.getOrCreateRoom(roomId);
@@ -48,7 +56,7 @@ describe("WebSocket Handlers (Simplified Tests)", () => {
       } as unknown as Server;
 
       // Simulate client connection
-      handleOpen(mockWs as any, mockServer);
+      await handleOpen(mockWs as any, mockServer);
 
       // Verify SET_AUDIO_SOURCES was sent
       const audioSourcesMessage = sentMessages.find((msg) => {
@@ -74,7 +82,7 @@ describe("WebSocket Handlers (Simplified Tests)", () => {
       ]);
     });
 
-    it("should not send audio sources for empty rooms", () => {
+    it("should not send audio sources for empty rooms", async () => {
       // Create an empty room
       const roomId = "new-room";
       globalManager.getOrCreateRoom(roomId);
@@ -98,7 +106,7 @@ describe("WebSocket Handlers (Simplified Tests)", () => {
       } as unknown as Server;
 
       // Simulate client connection
-      handleOpen(mockWs as any, mockServer);
+      await handleOpen(mockWs as any, mockServer);
 
       // Verify no SET_AUDIO_SOURCES was sent
       const audioSourcesMessage = sentMessages.find((msg) => {
@@ -116,7 +124,7 @@ describe("WebSocket Handlers (Simplified Tests)", () => {
       expect(audioSourcesMessage).toBeUndefined();
     });
 
-    it("should handle multiple clients joining the same room", () => {
+    it("should handle multiple clients joining the same room", async () => {
       // Create a room with audio sources
       const roomId = "multi-client-room";
       const room = globalManager.getOrCreateRoom(roomId);
@@ -155,8 +163,8 @@ describe("WebSocket Handlers (Simplified Tests)", () => {
       } as unknown as Server;
 
       // Both clients connect
-      handleOpen(mockWs1 as any, mockServer);
-      handleOpen(mockWs2 as any, mockServer);
+      await handleOpen(mockWs1 as any, mockServer);
+      await handleOpen(mockWs2 as any, mockServer);
 
       // Verify both clients received the audio sources
       for (const messages of [client1Messages, client2Messages]) {
@@ -183,7 +191,7 @@ describe("WebSocket Handlers (Simplified Tests)", () => {
   });
 
   describe("Client State Management", () => {
-    it("should add client to room on connection", () => {
+    it("should add client to room on connection", async () => {
       const roomId = "client-test-room";
       const mockWs = {
         data: {
@@ -203,7 +211,7 @@ describe("WebSocket Handlers (Simplified Tests)", () => {
       expect(globalManager.hasRoom(roomId)).toBe(false);
 
       // Connect client
-      handleOpen(mockWs as any, mockServer);
+      await handleOpen(mockWs as any, mockServer);
 
       // Verify room was created and client was added
       expect(globalManager.hasRoom(roomId)).toBe(true);

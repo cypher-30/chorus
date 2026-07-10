@@ -1,3 +1,5 @@
+/* eslint-disable @next/next/no-img-element */
+import { useCanControlPlayback } from "@/hooks/useCanControlPlayback";
 import { cn, formatTime } from "@/lib/utils";
 import { useGlobalStore } from "@/store/global";
 import { Pause, Play, Repeat, Shuffle, SkipBack, SkipForward } from "lucide-react";
@@ -13,10 +15,13 @@ export const Player = () => {
   const playPreviousTrack = useGlobalStore((s) => s.playPreviousTrack);
   const isShuffled = useGlobalStore((s) => s.isShuffled);
   const setShuffle = useGlobalStore((s) => s.setShuffle);
+  const broadcastSpotifyPlay = useGlobalStore((s) => s.broadcastSpotifyPlay);
   const currentTrack = useGlobalStore((s) => s.currentTrack);
   const spotifyDeviceId = useGlobalStore((s) => s.spotifyDeviceId);
   const spotifyPositionMs = useGlobalStore((s) => s.spotifyPositionMs) ?? 0;
   const spotifyDurationMs = useGlobalStore((s) => s.spotifyDurationMs) ?? 0;
+  const previousTracks = useGlobalStore((s) => s.previousTracks);
+  const canControlPlayback = useCanControlPlayback();
 
   // Local state for slider
   const [sliderPosition, setSliderPosition] = useState(0);
@@ -52,15 +57,21 @@ export const Player = () => {
     (value: number[]) => {
       const newPosition = value[0];
       setIsDragging(false);
-      // If currently playing, broadcast play at new position
-      // If paused, just update position without playing
-      // Seek via Spotify API
-      const position_ms = Math.floor(newPosition * 1000);
-      if (spotifyDeviceId) {
-        fetch('/api/spotify/seek', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ device_id: spotifyDeviceId, position_ms })
+      if (!canControlPlayback) return;
+
+      if (currentTrack && isPlaying) {
+        // Synced seek: broadcast a PLAY at the new position so every device
+        // in the room jumps together
+        broadcastSpotifyPlay(currentTrack, newPosition);
+      } else if (spotifyDeviceId) {
+        // Paused: local seek only, don't force the room to start playing
+        fetch("/api/spotify/seek", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            device_id: spotifyDeviceId,
+            position_ms: Math.floor(newPosition * 1000),
+          }),
         });
       }
       setSliderPosition(newPosition);
@@ -73,33 +84,40 @@ export const Player = () => {
       });
     },
     [
-      isPlaying,
       setSliderPosition,
       posthog,
       currentTrack,
       trackDuration,
+      spotifyDeviceId,
+      canControlPlayback,
+      isPlaying,
+      broadcastSpotifyPlay,
     ]
   );
 
   const handlePlay = useCallback(() => {
+    if (!canControlPlayback) return;
     togglePlayPause();
     posthog.capture(isPlaying ? 'pause_track' : 'play_track');
-  }, [togglePlayPause, isPlaying, posthog]);
+  }, [togglePlayPause, isPlaying, posthog, canControlPlayback]);
 
   const handleSkipBack = useCallback(() => {
+    if (!canControlPlayback) return;
     playPreviousTrack();
-  }, [playPreviousTrack]);
+  }, [playPreviousTrack, canControlPlayback]);
 
   const handleSkipForward = useCallback(() => {
+    if (!canControlPlayback) return;
     playNextTrack();
     posthog.capture('skip_next');
-  }, [playNextTrack, posthog]);
+  }, [playNextTrack, posthog, canControlPlayback]);
 
   const handleShuffleChange = useCallback((value: string) => {
+    if (!canControlPlayback) return;
     const enabled = value === 'on';
     setShuffle(enabled);
     posthog.capture("set_shuffle", { shuffle_enabled: enabled });
-  }, [setShuffle, posthog]);
+  }, [setShuffle, posthog, canControlPlayback]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -130,7 +148,7 @@ export const Player = () => {
         {currentTrack && (
           <div className="flex items-center gap-3 mb-2">
             {currentTrack.album.images?.[0]?.url && (
-              <img src={currentTrack.album.images[0].url} className="w-10 h-10" />
+              <img src={currentTrack.album.images[0].url} className="w-10 h-10" alt={currentTrack.name} />
             )}
             <div className="min-w-0">
               <div className="text-sm font-medium truncate">{currentTrack.name}</div>
@@ -142,9 +160,10 @@ export const Player = () => {
           <div className="flex items-center gap-1 text-xs text-neutral-400">
             <Shuffle className={cn("size-4", isShuffled ? "text-primary-400" : "text-current")} />
             <select
-              className="bg-neutral-800 text-xs px-2 py-1 rounded border border-neutral-700"
+              className="bg-neutral-800 text-xs px-2 py-1 rounded border border-neutral-700 disabled:opacity-50"
               value={isShuffled ? 'on' : 'off'}
               onChange={(e) => handleShuffleChange(e.target.value)}
+              disabled={!canControlPlayback}
             >
               <option value="off">Off</option>
               <option value="on">Shuffle</option>
@@ -153,13 +172,14 @@ export const Player = () => {
           <button
             className="text-gray-400 hover:text-white transition-colors cursor-pointer hover:scale-105 duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handleSkipBack}
-            disabled={true}
+            disabled={!previousTracks?.length || !canControlPlayback}
           >
             <SkipBack className="w-7 h-7 md:w-5 md:h-5 fill-current" />
           </button>
           <button
-            className="bg-white text-black rounded-full p-3 md:p-2 hover:scale-105 transition-transform cursor-pointer duration-200 focus:outline-none"
+            className="bg-white text-black rounded-full p-3 md:p-2 hover:scale-105 transition-transform cursor-pointer duration-200 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handlePlay}
+            disabled={!canControlPlayback}
           >
             {isPlaying ? (
               <Pause className="w-5 h-5 md:w-4 md:h-4 fill-current stroke-1" />
@@ -170,7 +190,7 @@ export const Player = () => {
           <button
             className="text-gray-400 hover:text-white transition-colors cursor-pointer hover:scale-105 duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handleSkipForward}
-            disabled={false}
+            disabled={!canControlPlayback}
           >
             <SkipForward className="w-7 h-7 md:w-5 md:h-5 fill-current" />
           </button>
@@ -192,6 +212,7 @@ export const Player = () => {
             step={0.1}
             onValueChange={handleSliderChange}
             onValueCommit={handleSliderCommit}
+            disabled={!canControlPlayback}
           />
           <span className="text-xs text-muted-foreground min-w-11 text-right select-none">
             {formatTime(trackDuration)}

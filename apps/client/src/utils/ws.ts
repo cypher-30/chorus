@@ -1,4 +1,4 @@
-import { WSRequestType } from "@beatsync/shared";
+import { WSRequestType } from "@chorus/shared";
 
 export const sendWSRequest = ({
   ws,

@@ -1,4 +1,4 @@
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/authOptions";
 import { getServerSession } from "next-auth";
 import { NextResponse } from "next/server";
 
@@ -28,6 +28,7 @@ export async function GET(req: Request) {
     const data = await response.json();
     return NextResponse.json(data, { status: response.status });
   } catch (error) {
+    console.error("Spotify search failed", error);
     return NextResponse.json(
       { error: "Spotify search failed" },
       { status: 500 }

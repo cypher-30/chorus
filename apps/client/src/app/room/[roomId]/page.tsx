@@ -3,12 +3,12 @@ import { SpotifyPlayer } from "@/components/SpotifyPlayer";
 import { validateFullRoomId } from "@/lib/room";
 import React from "react";
 
-export default function Page({
+export default async function Page({
   params,
 }: {
-  params: { roomId: string };
+  params: Promise<{ roomId: string }>;
 }) {
-  const { roomId } = params;
+  const { roomId } = await params;
 
   if (!validateFullRoomId(roomId)) {
     return (

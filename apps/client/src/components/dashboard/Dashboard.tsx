@@ -3,6 +3,7 @@ import { useGlobalStore } from "@/store/global";
 import { Library, ListMusic, Rotate3D } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { TopBar } from "../room/TopBar";
+import { ConnectionStatusBanner } from "../room/ConnectionStatusBanner";
 import { SyncProgress } from "../ui/SyncProgress";
 import { Bottom } from "./Bottom";
 import { Left } from "./Left";
@@ -24,6 +25,7 @@ export const Dashboard = ({ roomId }: DashboardProps) => {
   return (
     <div className="w-full h-screen flex flex-col text-white bg-neutral-950">
       <TopBar roomId={roomId} />
+      <ConnectionStatusBanner />
       {!isSynced && hasUserStartedSystem && !isLoadingAudio && <SyncProgress />}
       {isReady && (
         <motion.div

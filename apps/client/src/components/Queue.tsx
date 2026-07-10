@@ -1,15 +1,11 @@
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { useCanControlPlayback } from "@/hooks/useCanControlPlayback";
 import { cn, extractFileNameFromUrl, formatTime } from "@/lib/utils";
 import { useGlobalStore } from "@/store/global";
 import { AudioSourceType } from "@chorus/shared";
-import { MoreHorizontal, Pause, Play, UploadCloud } from "lucide-react";
+import { Pause, Play } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 import { usePostHog } from "posthog-js/react";
+import { toast } from "sonner";
 
 export const Queue = ({ className, ...rest }: React.ComponentProps<"div">) => {
   const posthog = usePostHog();
@@ -23,8 +19,13 @@ export const Queue = ({ className, ...rest }: React.ComponentProps<"div">) => {
   const broadcastPause = useGlobalStore((state) => state.broadcastPause);
   const isPlaying = useGlobalStore((state) => state.isPlaying);
   const getAudioDuration = useGlobalStore((state) => state.getAudioDuration);
+  const canControlPlayback = useCanControlPlayback();
 
   const handleItemClick = (source: AudioSourceType) => {
+    if (!canControlPlayback) {
+      toast.error("Only admins can control playback in this room");
+      return;
+    }
     if (source.url === selectedAudioId) {
       if (isPlaying) {
         broadcastPause();

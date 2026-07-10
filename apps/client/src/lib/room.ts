@@ -17,3 +17,22 @@ export const createUserId = () => {
     );
   }
 };
+
+/**
+ * Stable per-tab client identity so reconnects keep the same clientId
+ * (admin status, spatial gains). sessionStorage keeps two tabs distinct.
+ */
+export const getStableClientId = (roomId: string): string => {
+  if (typeof window === "undefined") return "";
+  const key = `chorus-client-id-${roomId}`;
+  try {
+    let id = window.sessionStorage.getItem(key);
+    if (!id) {
+      id = createUserId();
+      window.sessionStorage.setItem(key, id);
+    }
+    return id;
+  } catch {
+    return createUserId();
+  }
+};

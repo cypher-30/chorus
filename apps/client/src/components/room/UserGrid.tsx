@@ -2,7 +2,7 @@
 import { cn } from "@/lib/utils";
 import { useGlobalStore } from "@/store/global";
 import { useRoomStore } from "@/store/room";
-import { ClientType, GRID } from "@chorus/shared";
+import { ClientDTOType, GRID } from "@chorus/shared";
 import { ArrowUp, Crown, HeadphonesIcon, Rotate3D } from "lucide-react";
 import { motion } from "motion/react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -23,14 +23,14 @@ import "./scrollbar.css";
 
 // Define prop types for components
 interface ClientAvatarProps {
-  client: ClientType;
+  client: ClientDTOType;
   isCurrentUser: boolean;
   animationSyncKey: number;
   isGridEnabled: boolean;
 }
 
 interface ConnectedUserItemProps {
-  client: ClientType;
+  client: ClientDTOType;
   isCurrentUser: boolean;
 }
 

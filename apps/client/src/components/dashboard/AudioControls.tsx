@@ -1,8 +1,7 @@
 "use client";
 
+import { useCanControlPlayback } from "@/hooks/useCanControlPlayback";
 import { useGlobalStore } from "@/store/global";
-import { useRoomStore } from "@/store/room";
-import { PlaybackControlsPermissionsEnum } from "@chorus/shared";
 import { Construction, Orbit } from "lucide-react";
 import { motion } from "motion/react";
 import { usePostHog } from "posthog-js/react";
@@ -18,10 +17,7 @@ export const AudioControls = () => {
   const isPlaying = useGlobalStore((state) => state.isPlaying);
   const togglePlayPause = useGlobalStore((state) => state.togglePlayPause);
   const playNextTrack = useGlobalStore((state) => state.playNextTrack);
-  const setPlaybackPermissions = useGlobalStore((s) => s.setPlaybackPermissions);
-  const connectedClients = useGlobalStore((s) => s.connectedClients);
-  const userId = useRoomStore((s) => s.userId);
-  const isAdmin = connectedClients.find((c) => c.clientId === userId)?.isAdmin ?? false;
+  const canControlPlayback = useCanControlPlayback();
 
   const handleStartSpatialAudio = () => {
     startSpatialAudio();
@@ -47,7 +43,7 @@ export const AudioControls = () => {
                 togglePlayPause();
                 posthog.capture(isPlaying ? "pause_click" : "play_click");
               }}
-              disabled={isLoadingAudio}
+              disabled={isLoadingAudio || !canControlPlayback}
             >
               {isPlaying ? "Pause" : "Play"}
             </Button>
@@ -58,7 +54,7 @@ export const AudioControls = () => {
                 playNextTrack();
                 posthog.capture("next_click");
               }}
-              disabled={isLoadingAudio}
+              disabled={isLoadingAudio || !canControlPlayback}
             >
               Next
             </Button>
@@ -66,22 +62,6 @@ export const AudioControls = () => {
         </div>
       </motion.div>
 
-      {/* Admin-only playback controls permissions */}
-      {isAdmin && (
-        <motion.div className="bg-neutral-800/20 rounded-md p-3 hover:bg-neutral-800/30 transition-colors">
-          <div className="flex items-center justify-between">
-            <div className="text-xs text-neutral-300">Who can control playback?</div>
-            <select
-              className="bg-neutral-800 text-xs px-2 py-1 rounded border border-neutral-700"
-              onChange={(e) => setPlaybackPermissions(e.target.value as any)}
-              defaultValue={PlaybackControlsPermissionsEnum.enum.EVERYONE}
-            >
-              <option value={PlaybackControlsPermissionsEnum.enum.EVERYONE}>Everyone</option>
-              <option value={PlaybackControlsPermissionsEnum.enum.ADMIN_ONLY}>Admins only</option>
-            </select>
-          </div>
-        </motion.div>
-      )}
       <h2 className={`text-xs font-medium uppercase tracking-wide ${
           isLoadingAudio ? "text-neutral-500" : "text-neutral-400"
         }`}>

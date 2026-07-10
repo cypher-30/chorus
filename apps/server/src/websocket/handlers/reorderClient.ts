@@ -9,9 +9,9 @@ export const handleReorderClient: HandlerFunction<
   // Handle client reordering
   const { room } = requireRoom(ws);
 
-  const reorderedClients = room.reorderClients(message.clientId, server);
+  room.reorderClients(message.clientId, server);
 
-  // Broadcast the updated client order to all clients
+  // Broadcast the updated client order to all clients (wire-safe DTOs)
   sendBroadcast({
     server,
     roomId: ws.data.roomId,
@@ -19,7 +19,8 @@ export const handleReorderClient: HandlerFunction<
       type: "ROOM_EVENT",
       event: {
         type: "CLIENT_CHANGE",
-        clients: reorderedClients,
+        clients: room.getClientDTOs(),
+        playbackControlsPermissions: room.getPlaybackControlsPermissions(),
       },
     },
   });
