@@ -1,0 +1,9 @@
+# Normalize line endings: store LF in the repo, let tools use native EOL in
+# the working tree. Stops the whole-repo CRLF/LF churn between WSL/Windows.
+* text=auto
+
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff binary
+*.woff2 binary
