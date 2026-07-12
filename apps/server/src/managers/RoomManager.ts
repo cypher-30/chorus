@@ -273,6 +273,35 @@ export class RoomManager {
   }
 
   /**
+   * Queue entries still waiting for a real audio file (url is a spotify:
+   * URI). index is the position in audioSources, used by matchAudioToTrack.
+   */
+  getPendingTracks(): { index: number; title: string; artist?: string }[] {
+    return this.audioSources
+      .map((source, index) => ({ source, index }))
+      .filter(({ source }) => source.url.startsWith("spotify:"))
+      .map(({ source, index }) => ({
+        index,
+        title: source.title ?? source.url,
+        artist: source.artist,
+      }));
+  }
+
+  /**
+   * Upgrade a pending track to synced audio: swap its url to the uploaded R2
+   * URL in place (metadata and queue position are kept). Returns the updated
+   * queue, or null if the index doesn't point at a pending entry.
+   */
+  matchAudioToTrack(index: number, r2Url: string): AudioSourceType[] | null {
+    const source = this.audioSources[index];
+    if (!source || !source.url.startsWith("spotify:")) return null;
+    source.spotifyUri = source.spotifyUri ?? source.url;
+    source.url = r2Url;
+    this.queueVersion++;
+    return this.audioSources;
+  }
+
+  /**
    * Queue state for SET_AUDIO_SOURCES broadcasts. currentIndex is derived
    * from playbackState so it always points at the room's current track.
    */
@@ -302,7 +331,12 @@ export class RoomManager {
     fromAudioSource: string,
     direction: "next" | "prev" = "next"
   ): PlayActionType | null {
-    if (this.audioSources.length === 0) return null;
+    // Only synced tracks (real audio) are playable; pending spotify: entries
+    // are skipped until the Telegram bot supplies their file
+    const playable = this.audioSources
+      .map((source, index) => ({ source, index }))
+      .filter(({ source }) => !source.url.startsWith("spotify:"));
+    if (playable.length === 0) return null;
 
     // Stale report: the client advanced from a track that is no longer the
     // room's current track (another client's intent already won)
@@ -323,32 +357,32 @@ export class RoomManager {
       return null;
     }
 
-    const currentIndex = this.audioSources.findIndex(
-      (s) => s.url === fromAudioSource
+    // Position of the current track within the playable subset
+    const currentPos = playable.findIndex(
+      ({ source }) => source.url === fromAudioSource
     );
 
-    let nextIndex: number;
+    let nextPos: number;
     if (this.shuffleEnabled && direction === "next") {
-      if (this.audioSources.length === 1) {
-        nextIndex = 0;
+      if (playable.length === 1) {
+        nextPos = 0;
       } else {
         // Random pick that never repeats the current track
         do {
-          nextIndex = Math.floor(Math.random() * this.audioSources.length);
-        } while (nextIndex === currentIndex);
+          nextPos = Math.floor(Math.random() * playable.length);
+        } while (nextPos === currentPos);
       }
     } else {
       const step = direction === "next" ? 1 : -1;
-      const base = currentIndex === -1 ? (direction === "next" ? -1 : 0) : currentIndex;
-      nextIndex =
-        (base + step + this.audioSources.length) % this.audioSources.length;
+      const base = currentPos === -1 ? (direction === "next" ? -1 : 0) : currentPos;
+      nextPos = (base + step + playable.length) % playable.length;
     }
 
     this.lastAdvance = { from: fromAudioSource, at: now };
 
     return {
       type: "PLAY",
-      audioSource: this.audioSources[nextIndex].url,
+      audioSource: playable[nextPos].source.url,
       trackTimeSeconds: 0,
     };
   }

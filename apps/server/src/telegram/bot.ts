@@ -39,6 +39,7 @@ interface TgFileLike {
 interface TgMessage {
   chat: TgChat;
   text?: string;
+  caption?: string;
   audio?: TgFileLike;
   voice?: TgFileLike;
   document?: TgFileLike;
@@ -100,13 +101,58 @@ export function startTelegramBot(server: Server): void {
   const HELP =
     "🎵 Chorus music bot\n\n" +
     "1) /room <6-digit code> — link this chat to your room\n" +
-    "2) Send me an audio file — I'll add it to that room's queue\n\n" +
+    "2) Send me an audio file — I'll add it to that room's queue\n" +
+    "3) /tracks — list queued tracks that still need audio\n" +
+    "4) Send an audio file with a number as the caption — I'll attach it " +
+    "to that track from the /tracks list\n\n" +
     "Then hit play in the app and every device plays it in sync.";
+
+  // Download a Telegram file and upload it into the room's R2 storage.
+  // Returns the public URL, or null after messaging the user about the error.
+  const fetchAndUpload = async (
+    chatId: number,
+    roomId: string,
+    file: TgFileLike,
+    displayName: string
+  ): Promise<string | null> => {
+    const fileInfo = await call("getFile", { file_id: file.file_id });
+    const filePath = fileInfo?.result?.file_path;
+    if (!filePath) {
+      await sendMessage(chatId, "Couldn't fetch that file from Telegram.");
+      return null;
+    }
+
+    const dl = await fetch(`${API}/file/bot${token}/${filePath}`);
+    if (!dl.ok) {
+      await sendMessage(
+        chatId,
+        "Download failed (the file may exceed Telegram's 20MB bot limit)."
+      );
+      return null;
+    }
+    const buf = new Uint8Array(await dl.arrayBuffer());
+
+    const contentType = file.mime_type || "audio/mpeg";
+    const fileName = generateAudioFileName(displayName);
+    return uploadAudioBuffer(roomId, fileName, buf, contentType);
+  };
+
+  // Broadcast the updated queue to the room and persist it to R2 — the same
+  // publish/persist sequence as handleUploadComplete
+  const publishQueue = async (roomId: string, room: NonNullable<ReturnType<typeof globalManager.getRoom>>): Promise<void> => {
+    const message: WSBroadcastType = {
+      type: "ROOM_EVENT",
+      event: { type: "SET_AUDIO_SOURCES", ...room.getQueueState() },
+    };
+    server.publish(roomId, JSON.stringify(message));
+    await uploadJSON(getQueueKey(roomId), room.getQueueState().sources);
+  };
 
   const handleAudio = async (
     chatId: number,
     file: TgFileLike,
-    displayName: string
+    displayName: string,
+    caption?: string
   ): Promise<void> => {
     const roomId = chatRoom.get(chatId);
     if (!roomId) {
@@ -131,37 +177,58 @@ export function startTelegramBot(server: Server): void {
       return;
     }
 
-    try {
-      // Resolve the file's download path
-      const fileInfo = await call("getFile", { file_id: file.file_id });
-      const filePath = fileInfo?.result?.file_path;
-      if (!filePath) {
-        await sendMessage(chatId, "Couldn't fetch that file from Telegram.");
-        return;
-      }
-
-      const dl = await fetch(`${API}/file/bot${token}/${filePath}`);
-      if (!dl.ok) {
+    // A numeric caption targets a pending track from the /tracks list;
+    // validate before downloading anything
+    const trackNumber = caption && /^\d+$/.test(caption) ? Number(caption) : null;
+    let pendingIndex: number | null = null;
+    let pendingTitle = "";
+    if (trackNumber !== null) {
+      const pending = room.getPendingTracks();
+      if (pending.length === 0) {
         await sendMessage(
           chatId,
-          "Download failed (the file may exceed Telegram's 20MB bot limit)."
+          "No tracks are waiting for audio in this room — send the file without a caption to add it as a new track."
         );
         return;
       }
-      const buf = new Uint8Array(await dl.arrayBuffer());
+      if (trackNumber < 1 || trackNumber > pending.length) {
+        await sendMessage(
+          chatId,
+          `Track ${trackNumber} doesn't exist — /tracks currently lists 1 to ${pending.length}.`
+        );
+        return;
+      }
+      pendingIndex = pending[trackNumber - 1].index;
+      pendingTitle = pending[trackNumber - 1].title;
+    }
 
-      const contentType = file.mime_type || "audio/mpeg";
-      const fileName = generateAudioFileName(displayName);
-      const url = await uploadAudioBuffer(roomId, fileName, buf, contentType);
+    try {
+      const url = await fetchAndUpload(chatId, roomId, file, displayName);
+      if (!url) return;
 
-      const updated = room.addAudioSource({ url });
-      const message: WSBroadcastType = {
-        type: "ROOM_EVENT",
-        event: { type: "SET_AUDIO_SOURCES", ...room.getQueueState() },
-      };
-      server.publish(roomId, JSON.stringify(message));
-      await uploadJSON(getQueueKey(roomId), updated);
+      if (pendingIndex !== null) {
+        // The queue may have changed while the file was downloading
+        const updated = room.matchAudioToTrack(pendingIndex, url);
+        if (!updated) {
+          await sendMessage(
+            chatId,
+            "That track changed while I was downloading — check /tracks and resend."
+          );
+          return;
+        }
+        await publishQueue(roomId, room);
+        await sendMessage(
+          chatId,
+          `Track ${trackNumber} ("${pendingTitle}") is now synced ✅`
+        );
+        return;
+      }
 
+      room.addAudioSource({
+        url,
+        title: displayName.replace(/\.[a-z0-9]{1,5}$/i, ""),
+      });
+      await publishQueue(roomId, room);
       await sendMessage(chatId, `Added "${displayName}" to room ${roomId} ✅`);
     } catch (err) {
       console.error("Telegram audio upload failed:", err);
@@ -190,6 +257,40 @@ export function startTelegramBot(server: Server): void {
         return;
       }
 
+      if (/^\/tracks(@\w+)?$/.test(text)) {
+        const roomId = chatRoom.get(chatId);
+        if (!roomId) {
+          await sendMessage(chatId, "Send /room <code> first.");
+          return;
+        }
+        const room = globalManager.getRoom(roomId);
+        if (!room) {
+          await sendMessage(
+            chatId,
+            `Room ${roomId} isn't active — open it in the app first.`
+          );
+          return;
+        }
+        const pending = room.getPendingTracks();
+        if (pending.length === 0) {
+          await sendMessage(
+            chatId,
+            "No tracks are waiting for audio — every queued track is synced. 🎉"
+          );
+          return;
+        }
+        const list = pending
+          .map(
+            (t, i) => `${i + 1}. ${t.title}${t.artist ? ` — ${t.artist}` : ""}`
+          )
+          .join("\n");
+        await sendMessage(
+          chatId,
+          `Tracks waiting for audio:\n\n${list}\n\nSend an audio file with the track's number as the caption to sync it.`
+        );
+        return;
+      }
+
       if (/^\/(room|start|help)(@\w+)?$/.test(text)) {
         await sendMessage(chatId, HELP);
         return;
@@ -204,19 +305,26 @@ export function startTelegramBot(server: Server): void {
         ? msg.document
         : undefined;
 
+    const caption = msg.caption?.trim();
     if (audio) {
       const base =
         [audio.performer, audio.title].filter(Boolean).join(" - ") ||
         audio.file_name ||
         "audio";
-      await handleAudio(chatId, audio, withExtension(base, audio.mime_type));
+      await handleAudio(
+        chatId,
+        audio,
+        withExtension(base, audio.mime_type),
+        caption
+      );
       return;
     }
     if (doc) {
       await handleAudio(
         chatId,
         doc,
-        withExtension(doc.file_name || "audio", doc.mime_type)
+        withExtension(doc.file_name || "audio", doc.mime_type),
+        caption
       );
       return;
     }
@@ -224,7 +332,8 @@ export function startTelegramBot(server: Server): void {
       await handleAudio(
         chatId,
         voice,
-        withExtension("voice-message", voice.mime_type)
+        withExtension("voice-message", voice.mime_type),
+        caption
       );
       return;
     }

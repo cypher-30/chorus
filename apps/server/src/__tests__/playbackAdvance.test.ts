@@ -46,11 +46,11 @@ describe("Server-authoritative playback advance", () => {
 
   const setupRoom = (roomId = "advance-room") => {
     const room = globalManager.getOrCreateRoom(roomId);
-    room.addAudioSource({ url: "spotify:track:A" });
-    room.addAudioSource({ url: "spotify:track:B" });
-    room.addAudioSource({ url: "spotify:track:C" });
+    room.addAudioSource({ url: "https://r2.test/room-x/a.mp3" });
+    room.addAudioSource({ url: "https://r2.test/room-x/b.mp3" });
+    room.addAudioSource({ url: "https://r2.test/room-x/c.mp3" });
     room.updatePlaybackSchedulePlay(
-      { type: "PLAY", audioSource: "spotify:track:A", trackTimeSeconds: 0 },
+      { type: "PLAY", audioSource: "https://r2.test/room-x/a.mp3", trackTimeSeconds: 0 },
       epochNow()
     );
     return room;
@@ -58,47 +58,47 @@ describe("Server-authoritative playback advance", () => {
 
   it("advances sequentially to the next track", () => {
     const room = setupRoom();
-    const action = room.advancePlayback("spotify:track:A");
+    const action = room.advancePlayback("https://r2.test/room-x/a.mp3");
     expect(action).toEqual({
       type: "PLAY",
-      audioSource: "spotify:track:B",
+      audioSource: "https://r2.test/room-x/b.mp3",
       trackTimeSeconds: 0,
     });
   });
 
   it("advances backwards with direction prev (wrapping)", () => {
     const room = setupRoom();
-    const action = room.advancePlayback("spotify:track:A", "prev");
-    expect(action?.audioSource).toBe("spotify:track:C");
+    const action = room.advancePlayback("https://r2.test/room-x/a.mp3", "prev");
+    expect(action?.audioSource).toBe("https://r2.test/room-x/c.mp3");
   });
 
   it("dedupes duplicate advance reports for the same track end", () => {
     const room = setupRoom();
-    expect(room.advancePlayback("spotify:track:A")).not.toBeNull();
+    expect(room.advancePlayback("https://r2.test/room-x/a.mp3")).not.toBeNull();
     // Same report from other clients within the dedupe window: no-op
-    expect(room.advancePlayback("spotify:track:A")).toBeNull();
-    expect(room.advancePlayback("spotify:track:A")).toBeNull();
+    expect(room.advancePlayback("https://r2.test/room-x/a.mp3")).toBeNull();
+    expect(room.advancePlayback("https://r2.test/room-x/a.mp3")).toBeNull();
   });
 
   it("ignores stale reports from a track that is no longer current", () => {
     const room = setupRoom();
-    const first = room.advancePlayback("spotify:track:A")!;
+    const first = room.advancePlayback("https://r2.test/room-x/a.mp3")!;
     room.updatePlaybackSchedulePlay(first, epochNow());
     // A client still reporting the old track's end must not advance again
-    expect(room.advancePlayback("spotify:track:A")).toBeNull();
+    expect(room.advancePlayback("https://r2.test/room-x/a.mp3")).toBeNull();
   });
 
   it("returns null for an empty queue", () => {
     const room = globalManager.getOrCreateRoom("empty-room");
-    expect(room.advancePlayback("spotify:track:A")).toBeNull();
+    expect(room.advancePlayback("https://r2.test/room-x/a.mp3")).toBeNull();
   });
 
   it("shuffle picks a server-decided track different from the current one", () => {
     const room = setupRoom();
     room.setShuffle(true);
-    const action = room.advancePlayback("spotify:track:A")!;
-    expect(action.audioSource).not.toBe("spotify:track:A");
-    expect(["spotify:track:B", "spotify:track:C"]).toContain(
+    const action = room.advancePlayback("https://r2.test/room-x/a.mp3")!;
+    expect(action.audioSource).not.toBe("https://r2.test/room-x/a.mp3");
+    expect(["https://r2.test/room-x/b.mp3", "https://r2.test/room-x/c.mp3"]).toContain(
       action.audioSource
     );
   });
@@ -112,7 +112,7 @@ describe("Server-authoritative playback advance", () => {
 
     const message = {
       type: "PLAYBACK_ADVANCE",
-      audioSource: "spotify:track:A",
+      audioSource: "https://r2.test/room-x/a.mp3",
       direction: "next",
     } as any;
     for (const clientId of ["c1", "c2", "c3"]) {
@@ -192,8 +192,8 @@ describe("Queue state versioning", () => {
     const room = new RoomManager("version-room");
     const v0 = room.getQueueState().queueVersion;
 
-    room.addAudioSource({ url: "spotify:track:A" });
-    room.addAudioSource({ url: "spotify:track:B" });
+    room.addAudioSource({ url: "https://r2.test/room-x/a.mp3" });
+    room.addAudioSource({ url: "https://r2.test/room-x/b.mp3" });
     expect(room.getQueueState().queueVersion).toBe(v0 + 2);
 
     room.setShuffle(true);
@@ -203,9 +203,86 @@ describe("Queue state versioning", () => {
     expect(state.currentIndex).toBe(-1); // nothing playing yet
 
     room.updatePlaybackSchedulePlay(
-      { type: "PLAY", audioSource: "spotify:track:B", trackTimeSeconds: 0 },
+      { type: "PLAY", audioSource: "https://r2.test/room-x/b.mp3", trackTimeSeconds: 0 },
       epochNow()
     );
     expect(room.getQueueState().currentIndex).toBe(1);
+  });
+});
+
+describe("Pending tracks (spotify: placeholders)", () => {
+  const A = "https://r2.test/room-x/a.mp3";
+  const C = "https://r2.test/room-x/c.mp3";
+
+  const setupMixedRoom = () => {
+    const room = new RoomManager("pending-room");
+    room.addAudioSource({ url: A, title: "Synced A" });
+    room.addAudioSource({
+      url: "spotify:track:P1",
+      title: "Pending One",
+      artist: "Artist One",
+    });
+    room.addAudioSource({ url: C, title: "Synced C" });
+    room.addAudioSource({ url: "spotify:track:P2", title: "Pending Two" });
+    room.updatePlaybackSchedulePlay(
+      { type: "PLAY", audioSource: A, trackTimeSeconds: 0 },
+      epochNow()
+    );
+    return room;
+  };
+
+  it("advance skips pending entries in both directions", () => {
+    const room = setupMixedRoom();
+    expect(room.advancePlayback(A)?.audioSource).toBe(C);
+
+    const room2 = setupMixedRoom();
+    // prev from A wraps past both pending entries to C
+    expect(room2.advancePlayback(A, "prev")?.audioSource).toBe(C);
+  });
+
+  it("shuffle advance only picks synced entries", () => {
+    for (let i = 0; i < 10; i++) {
+      const room = setupMixedRoom();
+      room.setShuffle(true);
+      expect(room.advancePlayback(A)?.audioSource).toBe(C);
+    }
+  });
+
+  it("returns null when every entry is pending", () => {
+    const room = new RoomManager("all-pending-room");
+    room.addAudioSource({ url: "spotify:track:P1", title: "Pending One" });
+    expect(room.advancePlayback("spotify:track:P1")).toBeNull();
+  });
+
+  it("getPendingTracks lists pending entries with queue indices", () => {
+    const room = setupMixedRoom();
+    expect(room.getPendingTracks()).toEqual([
+      { index: 1, title: "Pending One", artist: "Artist One" },
+      { index: 3, title: "Pending Two", artist: undefined },
+    ]);
+  });
+
+  it("matchAudioToTrack swaps the url in place and keeps metadata", () => {
+    const room = setupMixedRoom();
+    const before = room.getQueueState().queueVersion;
+    const updated = room.matchAudioToTrack(1, "https://r2.test/room-x/p1.mp3")!;
+    expect(updated).not.toBeNull();
+    expect(updated[1]).toEqual({
+      url: "https://r2.test/room-x/p1.mp3",
+      title: "Pending One",
+      artist: "Artist One",
+      spotifyUri: "spotify:track:P1",
+    });
+    expect(room.getQueueState().queueVersion).toBe(before + 1);
+    // Now playable: advance from A reaches the upgraded track
+    expect(room.advancePlayback(A)?.audioSource).toBe(
+      "https://r2.test/room-x/p1.mp3"
+    );
+  });
+
+  it("matchAudioToTrack rejects indices that aren't pending", () => {
+    const room = setupMixedRoom();
+    expect(room.matchAudioToTrack(0, "https://r2.test/x.mp3")).toBeNull(); // synced
+    expect(room.matchAudioToTrack(99, "https://r2.test/x.mp3")).toBeNull(); // out of range
   });
 });
