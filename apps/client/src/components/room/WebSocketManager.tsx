@@ -79,7 +79,6 @@ export const WebSocketManager = ({
   );
 
   // <<< START OF SPOTIFY CHANGES >>>
-  const playSpotifyTrack = useGlobalStore((state) => state.playSpotifyTrack);
   // <<< END OF SPOTIFY CHANGES >>>
 
   // Use the NTP heartbeat hook
@@ -200,22 +199,13 @@ export const WebSocketManager = ({
         const { scheduledAction, serverTimeToExecute } = response;
 
         if (scheduledAction.type === "PLAY") {
-          // <<< START OF SPOTIFY CHANGES >>>
-          // Check if the audioSource is a Spotify URI
-          if (scheduledAction.audioSource.startsWith("spotify:track")) {
-            playSpotifyTrack(
-              scheduledAction.audioSource,
-              scheduledAction.trackTimeSeconds
-            );
-          } else {
-            // Fallback to the old audio engine if needed
-            schedulePlay({
-              trackTimeSeconds: scheduledAction.trackTimeSeconds,
-              targetServerTime: serverTimeToExecute,
-              audioSource: scheduledAction.audioSource,
-            });
-          }
-          // <<< END OF SPOTIFY CHANGES >>>
+          // schedulePlay ignores pending (spotify:) sources — they have no
+          // audio until the Telegram bot supplies the file
+          schedulePlay({
+            trackTimeSeconds: scheduledAction.trackTimeSeconds,
+            targetServerTime: serverTimeToExecute,
+            audioSource: scheduledAction.audioSource,
+          });
         } else if (scheduledAction.type === "PAUSE") {
           schedulePause({
             targetServerTime: serverTimeToExecute,

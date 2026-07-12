@@ -63,7 +63,9 @@ export function SpotifyPlaylists() {
       }
       const state = useGlobalStore.getState();
       const seen = new Set<string>([
-        ...(state.trackQueue || []).map((t) => t.uri),
+        ...state.audioSources.flatMap((s) =>
+          [s.url, s.spotifyUri].filter((u): u is string => Boolean(u))
+        ),
         state.currentTrack?.uri ?? "",
       ]);
       setProgress((p) => ({ ...p, [id]: { ...resetProgress, total: tracks.length } }));

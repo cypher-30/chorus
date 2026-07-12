@@ -15,22 +15,23 @@ export const Player = () => {
   const playPreviousTrack = useGlobalStore((s) => s.playPreviousTrack);
   const isShuffled = useGlobalStore((s) => s.isShuffled);
   const setShuffle = useGlobalStore((s) => s.setShuffle);
-  const broadcastSpotifyPlay = useGlobalStore((s) => s.broadcastSpotifyPlay);
-  const currentTrack = useGlobalStore((s) => s.currentTrack);
-  const spotifyDeviceId = useGlobalStore((s) => s.spotifyDeviceId);
-  const spotifyPositionMs = useGlobalStore((s) => s.spotifyPositionMs) ?? 0;
-  const spotifyDurationMs = useGlobalStore((s) => s.spotifyDurationMs) ?? 0;
-  const previousTracks = useGlobalStore((s) => s.previousTracks);
+  const broadcastPlay = useGlobalStore((s) => s.broadcastPlay);
+  const getCurrentTrackPosition = useGlobalStore((s) => s.getCurrentTrackPosition);
+  const selectedAudioUrl = useGlobalStore((s) => s.selectedAudioUrl);
+  const audioSources = useGlobalStore((s) => s.audioSources);
+  const duration = useGlobalStore((s) => s.duration);
   const canControlPlayback = useCanControlPlayback();
+
+  // The room's current synced track (Web Audio path)
+  const currentSource = audioSources.find((s) => s.url === selectedAudioUrl);
 
   // Local state for slider
   const [sliderPosition, setSliderPosition] = useState(0);
   const [trackDuration, setTrackDuration] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
-  // keep duration from spotify SDK
   useEffect(() => {
-    setTrackDuration(spotifyDurationMs / 1000);
-  }, [spotifyDurationMs]);
+    setTrackDuration(duration);
+  }, [duration]);
 
   // Update slider position during playback
   useEffect(() => {
@@ -38,12 +39,12 @@ export const Player = () => {
 
     const interval = setInterval(() => {
       if (!isDragging) {
-        setSliderPosition(spotifyPositionMs / 1000);
+        setSliderPosition(getCurrentTrackPosition());
       }
     }, 100); // Update every 100ms
 
     return () => clearInterval(interval);
-  }, [isPlaying, spotifyPositionMs, isDragging]);
+  }, [isPlaying, isDragging, getCurrentTrackPosition]);
 
   // Handle slider change
   const handleSliderChange = useCallback((value: number[]) => {
@@ -59,39 +60,28 @@ export const Player = () => {
       setIsDragging(false);
       if (!canControlPlayback) return;
 
-      if (currentTrack && isPlaying) {
+      if (currentSource && isPlaying) {
         // Synced seek: broadcast a PLAY at the new position so every device
         // in the room jumps together
-        broadcastSpotifyPlay(currentTrack, newPosition);
-      } else if (spotifyDeviceId) {
-        // Paused: local seek only, don't force the room to start playing
-        fetch("/api/spotify/seek", {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            device_id: spotifyDeviceId,
-            position_ms: Math.floor(newPosition * 1000),
-          }),
-        });
+        broadcastPlay(newPosition);
       }
       setSliderPosition(newPosition);
 
       // Log scrub event
       posthog.capture("scrub_confirm", {
         position: newPosition,
-        track_id: currentTrack?.uri,
+        track_id: currentSource?.url,
         track_duration: trackDuration,
       });
     },
     [
       setSliderPosition,
       posthog,
-      currentTrack,
+      currentSource,
       trackDuration,
-      spotifyDeviceId,
       canControlPlayback,
       isPlaying,
-      broadcastSpotifyPlay,
+      broadcastPlay,
     ]
   );
 
@@ -145,14 +135,27 @@ export const Player = () => {
   return (
     <div className="w-full flex justify-center">
       <div className="w-full max-w-[37rem]">
-        {currentTrack && (
+        {currentSource && (
           <div className="flex items-center gap-3 mb-2">
-            {currentTrack.album.images?.[0]?.url && (
-              <img src={currentTrack.album.images[0].url} className="w-10 h-10" alt={currentTrack.name} />
+            {currentSource.artworkUrl && (
+              <img
+                src={currentSource.artworkUrl}
+                className="w-10 h-10"
+                alt={currentSource.title ?? "Now playing"}
+              />
             )}
             <div className="min-w-0">
-              <div className="text-sm font-medium truncate">{currentTrack.name}</div>
-              <div className="text-xs text-neutral-400 truncate">{currentTrack.artists.map(a=>a.name).join(', ')}</div>
+              <div className="text-sm font-medium truncate">
+                {currentSource.title ??
+                  decodeURIComponent(
+                    currentSource.url.split("/").pop() ?? currentSource.url
+                  )}
+              </div>
+              {currentSource.artist && (
+                <div className="text-xs text-neutral-400 truncate">
+                  {currentSource.artist}
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -172,7 +175,7 @@ export const Player = () => {
           <button
             className="text-gray-400 hover:text-white transition-colors cursor-pointer hover:scale-105 duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
             onClick={handleSkipBack}
-            disabled={!previousTracks?.length || !canControlPlayback}
+            disabled={!currentSource || !canControlPlayback}
           >
             <SkipBack className="w-7 h-7 md:w-5 md:h-5 fill-current" />
           </button>

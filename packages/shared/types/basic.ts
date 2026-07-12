@@ -13,8 +13,17 @@ export const PositionSchema = z.object({
 });
 export type PositionType = z.infer<typeof PositionSchema>;
 
+// url is both identity and type discriminator: `spotify:track:ID` = pending
+// (metadata only, needs a real audio file), http R2 URL = synced/playable.
+// Metadata fields are optional so legacy `{ url }` queues still parse.
 export const AudioSourceSchema = z.object({
   url: z.string(),
+  title: z.string().optional(),
+  artist: z.string().optional(),
+  artworkUrl: z.string().optional(),
+  durationMs: z.number().optional(),
+  // Original Spotify URI, preserved after `url` flips to an R2 URL
+  spotifyUri: z.string().optional(),
 });
 export type AudioSourceType = z.infer<typeof AudioSourceSchema>;
 
