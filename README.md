@@ -75,17 +75,22 @@ Server (`apps/server/.env`):
 
 Uploads go browser → R2 directly via presigned URLs; the server only brokers URLs and broadcasts the new queue. Room storage is cleaned up 60 s after the last participant leaves.
 
-### Add music via Telegram
+### Add music via Spotify links + Telegram
 
 Spotify is only for discovery — its audio can't be synced. To get a song *playing in sync*, its audio
-file has to land in the room's queue. The optional Telegram bot is that channel:
+file has to land in the room's queue. The flow:
 
-1. Create a bot with [@BotFather](https://t.me/BotFather) and put its token in `apps/server/.env` as
-   `TELEGRAM_BOT_TOKEN`, then start the server. It long-polls Telegram (no public URL needed).
-2. In your bot chat, send `/room 123456` (your 6-digit room code) to link the chat to that room.
-3. Send the bot any audio file (e.g. one you got from another Telegram music bot). It uploads the file
-   into the room's R2 storage and adds it to the queue — then hit play in the app and every device plays
-   it in sync.
+1. **Paste a Spotify link** (track, album, or playlist) into the room's "Add by link" box. Its tracks
+   fill the queue with album art and titles as greyed **"Needs audio"** placeholders — they're skipped
+   during playback until real audio arrives.
+2. **Set up the bot once:** create a bot with [@BotFather](https://t.me/BotFather) and put its token in
+   `apps/server/.env` as `TELEGRAM_BOT_TOKEN`, then start the server. It long-polls Telegram (no public
+   URL needed). In your bot chat, send `/room 123456` (your 6-digit room code) to link the chat.
+3. **Supply the audio:** send `/tracks` to get a numbered list of tracks waiting for audio, then send the
+   bot an audio file (e.g. one you got from another Telegram music bot) **with the track's number as the
+   caption**. The bot uploads it to the room's R2 storage and flips that queue entry to **"Synced ✓"** —
+   playable in tight sync, with its Spotify metadata kept.
+4. An audio file sent **without** a caption is simply appended to the queue as a new synced track.
 
 Files are capped at ~20 MB by Telegram's bot download limit, which covers normal-length songs.
 
