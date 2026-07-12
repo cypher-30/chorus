@@ -71,8 +71,23 @@ Server (`apps/server/.env`):
 | `S3_PUBLIC_URL` | Public base URL clients fetch audio from |
 | `S3_ENDPOINT` | R2/S3 endpoint (e.g. `https://<account>.r2.cloudflarestorage.com`) |
 | `S3_ACCESS_KEY_ID` / `S3_SECRET_ACCESS_KEY` | R2/S3 credentials |
+| `TELEGRAM_BOT_TOKEN` | Telegram upload bot (optional — see below); if unset the bot is disabled |
 
 Uploads go browser → R2 directly via presigned URLs; the server only brokers URLs and broadcasts the new queue. Room storage is cleaned up 60 s after the last participant leaves.
+
+### Add music via Telegram
+
+Spotify is only for discovery — its audio can't be synced. To get a song *playing in sync*, its audio
+file has to land in the room's queue. The optional Telegram bot is that channel:
+
+1. Create a bot with [@BotFather](https://t.me/BotFather) and put its token in `apps/server/.env` as
+   `TELEGRAM_BOT_TOKEN`, then start the server. It long-polls Telegram (no public URL needed).
+2. In your bot chat, send `/room 123456` (your 6-digit room code) to link the chat to that room.
+3. Send the bot any audio file (e.g. one you got from another Telegram music bot). It uploads the file
+   into the room's R2 storage and adds it to the queue — then hit play in the app and every device plays
+   it in sync.
+
+Files are capped at ~20 MB by Telegram's bot download limit, which covers normal-length songs.
 
 ### Tests & checks
 

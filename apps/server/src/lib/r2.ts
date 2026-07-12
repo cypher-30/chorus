@@ -71,6 +71,34 @@ export function getPublicAudioUrl(roomId: string, fileName: string): string {
 }
 
 /**
+ * Upload an audio buffer directly to R2 (used by the Telegram bot, which runs
+ * in-process and so skips the presigned-URL round trip). Mirrors the key
+ * scheme in generatePresignedUploadUrl and returns the public URL.
+ */
+export async function uploadAudioBuffer(
+  roomId: string,
+  fileName: string,
+  body: Uint8Array,
+  contentType: string
+): Promise<string> {
+  const key = `room-${roomId}/${fileName}`;
+
+  const command = new PutObjectCommand({
+    Bucket: S3_CONFIG.BUCKET_NAME,
+    Key: key,
+    Body: body,
+    ContentType: contentType,
+    Metadata: {
+      roomId,
+      uploadedAt: new Date().toISOString(),
+    },
+  });
+
+  await r2Client.send(command);
+  return getPublicAudioUrl(roomId, fileName);
+}
+
+/**
  * Validate if an audio file exists in R2 by checking its URL
  * @param audioUrl The public URL of the audio file
  * @returns true if the file exists, false otherwise

@@ -14,6 +14,7 @@ import { BackupManager } from "./managers/BackupManager";
 import { getActiveRooms } from "./routes/active";
 import { handleRoomExists } from "./routes/roomExists";
 import { handleQueueAdd, handleQueueSet } from "./routes/queue";
+import { startTelegramBot } from "./telegram/bot";
 
 // Bun.serve with WebSocket support
 const server = Bun.serve<WSData, undefined>({
@@ -83,6 +84,9 @@ const server = Bun.serve<WSData, undefined>({
 });
 
 console.log(`HTTP listening on http://${server.hostname}:${server.port}`);
+
+// Optional Telegram upload bot (no-op if TELEGRAM_BOT_TOKEN is unset)
+startTelegramBot(server);
 
 // Simple graceful shutdown
 const shutdown = async () => {
