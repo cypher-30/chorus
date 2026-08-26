@@ -50,22 +50,29 @@ export const handleOpen = async (
   // into a cold room receives it (no-op when the room already has sources)
   await room.restoreQueueIfAvailable();
 
-  // Send audio sources to the newly joined client if any exist
+  // Always tell the newly joined client the current queue state, even when
+  // empty — a client reconnecting to a roomId whose room was cleaned up and
+  // recreated (fresh RoomManager, empty audioSources) needs an explicit
+  // "queue is empty now" message just as much as one joining a populated
+  // room does, so it can drop any stale local queue/cache state instead of
+  // silently keeping it. (This doesn't fully close that gap: a reconnect
+  // without a full page reload keeps the client's local queueVersion,
+  // and the fresh room starts back at 0, so handleSetAudioSources's
+  // out-of-order guard on the client still drops this message in that
+  // specific case — see PLAN.md's Known follow-ups.)
   const { audioSources } = room.getState();
-  if (audioSources.length > 0) {
-    console.log(
-      `Sending ${audioSources.length} audio source(s) to newly joined client ${ws.data.username}`
-    );
-    const audioSourcesMessage: WSBroadcastType = {
-      type: "ROOM_EVENT",
-      event: {
-        type: "SET_AUDIO_SOURCES",
-        ...room.getQueueState(),
-      },
-    };
-    // Send directly to the WebSocket since this is a broadcast-type message sent to a single client
-    ws.send(JSON.stringify(audioSourcesMessage));
-  }
+  console.log(
+    `Sending ${audioSources.length} audio source(s) to newly joined client ${ws.data.username}`
+  );
+  const audioSourcesMessage: WSBroadcastType = {
+    type: "ROOM_EVENT",
+    event: {
+      type: "SET_AUDIO_SOURCES",
+      ...room.getQueueState(),
+    },
+  };
+  // Send directly to the WebSocket since this is a broadcast-type message sent to a single client
+  ws.send(JSON.stringify(audioSourcesMessage));
 
   const message = createClientUpdate(roomId);
   sendBroadcast({ server, roomId, message });

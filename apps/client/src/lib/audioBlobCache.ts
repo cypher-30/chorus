@@ -60,7 +60,20 @@ const openCacheDb = async (): Promise<IDBDatabase | null> => {
         metaStore.createIndex("updatedAt", "updatedAt", { unique: false });
       }
     };
-    return await requestToPromise(request);
+
+    const db = await new Promise<IDBDatabase | null>((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+      // Another tab has this DB open on an older version and hasn't
+      // released it (e.g. a tab still running pre-v2 code). Without this,
+      // the open request never settles and every cache read/write on this
+      // tab hangs forever instead of falling back to a normal fetch.
+      request.onblocked = () => resolve(null);
+    });
+    // Let another tab's version-bump proceed instead of blocking it the
+    // same way: close this connection as soon as one is requested.
+    db?.addEventListener("versionchange", () => db.close());
+    return db;
   } catch (error) {
     console.warn("IndexedDB unavailable for audio cache", error);
     return null;

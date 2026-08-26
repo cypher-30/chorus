@@ -82,7 +82,7 @@ describe("WebSocket Handlers (Simplified Tests)", () => {
       ]);
     });
 
-    it("should not send audio sources for empty rooms", async () => {
+    it("should send an empty SET_AUDIO_SOURCES for empty rooms (lets a reconnecting client drop stale local state)", async () => {
       // Create an empty room
       const roomId = "new-room";
       globalManager.getOrCreateRoom(roomId);
@@ -108,7 +108,9 @@ describe("WebSocket Handlers (Simplified Tests)", () => {
       // Simulate client connection
       await handleOpen(mockWs as any, mockServer);
 
-      // Verify no SET_AUDIO_SOURCES was sent
+      // handleOpen now always sends SET_AUDIO_SOURCES, even for an empty
+      // queue, so a client reconnecting into a recreated (cleaned-up) room
+      // gets an explicit signal to drop any stale queue/cache it's holding.
       const audioSourcesMessage = sentMessages.find((msg) => {
         try {
           const parsed = JSON.parse(msg);
@@ -121,7 +123,9 @@ describe("WebSocket Handlers (Simplified Tests)", () => {
         }
       });
 
-      expect(audioSourcesMessage).toBeUndefined();
+      expect(audioSourcesMessage).toBeDefined();
+      const parsed = JSON.parse(audioSourcesMessage!);
+      expect(parsed.event.sources).toEqual([]);
     });
 
     it("should handle multiple clients joining the same room", async () => {
