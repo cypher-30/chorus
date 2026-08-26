@@ -20,10 +20,19 @@ import { SOCIAL_LINKS } from "@/constants";
 import { useQuery } from "@tanstack/react-query";
 import { fetchActiveRooms } from "@/lib/api";
 import { AuthButtons } from "./AuthButtons";
+import { Logo } from "./room/RoomHeader";
 
 interface JoinFormData {
   roomId: string;
 }
+
+const countryCodeToFlag = (countryCode: string): string => {
+  if (!/^[A-Z]{2}$/.test(countryCode)) return "";
+  const base = 127397;
+  return String.fromCodePoint(
+    ...countryCode.split("").map((char) => base + char.charCodeAt(0))
+  );
+};
 
 export const Join = () => {
   const posthog = usePostHog();
@@ -53,6 +62,9 @@ export const Join = () => {
     queryFn: fetchActiveRooms,
     refetchInterval: 10_000,
   });
+
+  const totalListeners = numActiveUsers?.totalListeners ?? 0;
+  const playingNowRooms = (numActiveUsers?.rooms ?? []).slice(0, 8);
 
   const router = useRouter();
 
@@ -95,53 +107,125 @@ export const Join = () => {
     setUsername(newName);
   };
 
+  const handleQuickJoin = (roomId: string) => {
+    if (!validateFullRoomId(roomId)) return;
+    setValue("roomId", roomId, {
+      shouldValidate: true,
+      shouldDirty: true,
+      shouldTouch: true,
+    });
+    setIsJoining(true);
+    router.push(`/room/${roomId}`);
+  };
+
   return (
     <motion.div
-      className="fixed inset-0 flex flex-col items-center justify-center bg-neutral-950 backdrop-blur-sm"
+      className="fixed inset-0 flex flex-col items-center justify-center bg-background px-6"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.5 }}
     >
-      <div className="w-full px-1">
+      <div className="w-full max-w-[360px]">
         <motion.div
-          className="flex flex-col items-center justify-center p-6 bg-neutral-900 rounded-lg border border-neutral-800 shadow-xl max-w-[28rem] mx-auto"
+          className="mb-5 flex flex-col items-center gap-1.5"
+          initial={{ opacity: 0, y: -5 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4 }}
+        >
+          <Logo size={40} />
+          <span className="font-display text-xl font-bold tracking-tight">Chorus</span>
+          <span className="text-[13px] text-muted-foreground">
+            One room, every speaker, one instant.
+          </span>
+        </motion.div>
+
+        <motion.div
+          className="flex flex-col items-center justify-center rounded-2xl border border-border bg-card p-6"
           initial={{ opacity: 0, y: 10, scale: 0.98 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
         >
-          {numActiveUsers && numActiveUsers > 0 ? (
+          {totalListeners > 0 ? (
             <motion.div
-              className="flex items-center gap-1.5 mb-3"
+              className="mb-3 flex items-center gap-1.5"
               initial={{ opacity: 0, y: -5 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.1 }}
             >
               <motion.div className="relative flex items-center justify-center">
-                <motion.div className="size-2 bg-green-500 rounded-full" />
-                <motion.div className="absolute size-2.5 bg-green-500/30 rounded-full animate-ping" />
+                <motion.div className="size-2 rounded-full bg-primary" />
+                <motion.div className="absolute size-2.5 animate-ping rounded-full bg-primary/30" />
               </motion.div>
-              <span className="text-xs text-neutral-500 ml-0.5">
-                {numActiveUsers} {numActiveUsers === 1 ? "person" : "people"}{" "}
+              <span className="ml-0.5 text-xs text-muted-foreground">
+                {totalListeners} {totalListeners === 1 ? "person" : "people"}{" "}
                 listening now
               </span>
             </motion.div>
           ) : null}
-          <motion.h2
-            className="text-base font-medium tracking-tight mb-1 text-white"
-            initial={{ opacity: 0, y: -5 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.13 }}
-          >
-            Join a Chorus Room
-          </motion.h2>
-          <motion.p
-            className="text-neutral-400 mb-5 text-center text-xs"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.4, delay: 0.15 }}
-          >
-            Enter a room code to join or create a new room
-          </motion.p>
+          {playingNowRooms.length > 0 ? (
+            <motion.div
+              className="mb-3 w-full rounded-xl border border-border bg-accent/30 p-2.5"
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: 0.12 }}
+            >
+              <div className="mb-2 flex items-center justify-between">
+                <span className="text-[11px] font-semibold tracking-[0.08em] text-muted-foreground">
+                  PLAYING NOW
+                </span>
+                <span className="text-[11px] text-muted-foreground">
+                  {playingNowRooms.length} live room
+                  {playingNowRooms.length === 1 ? "" : "s"}
+                </span>
+              </div>
+              <div className="max-h-40 space-y-1.5 overflow-y-auto pr-0.5">
+                {playingNowRooms.map((room) => {
+                  const title = room.currentTrack?.title ?? "Nothing queued yet";
+                  const subline = `${room.roomId} · ${room.listenerCount} listener${room.listenerCount === 1 ? "" : "s"} · ${room.trackCount} track${room.trackCount === 1 ? "" : "s"}`;
+                  const flags = room.countryCodes.map(countryCodeToFlag).filter(Boolean);
+
+                  return (
+                    <button
+                      key={room.roomId}
+                      type="button"
+                      onClick={() => handleQuickJoin(room.roomId)}
+                      className="flex w-full items-center justify-between rounded-lg border border-transparent bg-card px-2.5 py-2 text-left transition-colors hover:border-border hover:bg-background"
+                      disabled={isJoining || isCreating}
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-medium text-foreground">
+                          {title}
+                        </p>
+                        {room.currentTrack?.artist ? (
+                          <p className="truncate text-[11px] text-muted-foreground">
+                            {room.currentTrack.artist}
+                          </p>
+                        ) : null}
+                        <p className="truncate text-[11px] text-muted-foreground">
+                          {subline}
+                        </p>
+                      </div>
+                      <div className="ml-2 flex shrink-0 items-center gap-1.5">
+                        {room.hasSpatialAudio ? (
+                          <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">
+                            Spatial
+                          </span>
+                        ) : null}
+                        {flags.slice(0, 3).length > 0 ? (
+                          <span className="text-xs" aria-hidden>
+                            {flags.slice(0, 3).join(" ")}
+                          </span>
+                        ) : null}
+                        <span className="rounded-full border border-border px-2 py-0.5 text-[10px] text-muted-foreground">
+                          Join
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </motion.div>
+          ) : null}
           <form onSubmit={handleSubmit(onSubmit)} className="w-full">
             <motion.div
               className="flex justify-center"
@@ -171,8 +255,8 @@ export const Join = () => {
                         <InputOTPSlot
                           key={index}
                           index={index}
-                          className="w-9 h-10 text-base bg-neutral-800/80 border-neutral-700 transition-all duration-200 
-                          focus-within:border-primary/70 focus-within:bg-neutral-800 focus-within:ring-1 focus-within:ring-primary/30"
+                          className="h-11 w-9 rounded-lg border border-border bg-accent font-mono text-base transition-all duration-200
+                          data-[active=true]:border-primary/70 data-[active=true]:ring-1 data-[active=true]:ring-primary/30"
                         />
                       ))}
                     </InputOTPGroup>
@@ -184,23 +268,23 @@ export const Join = () => {
               <motion.p
                 initial={{ opacity: 0, height: 0 }}
                 animate={{ opacity: 1, height: "auto" }}
-                className="text-xs text-red-500 text-center mt-1"
+                className="mt-1 text-center text-xs text-destructive"
               >
                 {errors.roomId.message}
               </motion.p>
             )}
             <motion.div
-              className="flex items-center justify-center mt-5"
+              className="mt-5 flex items-center justify-center"
               initial={{ opacity: 0, y: 5 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.25 }}
             >
-              <div className="text-sm text-neutral-400">
+              <div className="text-sm text-muted-foreground">
                 You&apos;ll join as{" "}
                 <AnimatePresence mode="wait" initial={false}>
                   <motion.span
                     key={username}
-                    className="text-primary font-medium inline-block"
+                    className="inline-block font-medium text-primary"
                     initial={{ opacity: 0, filter: "blur(8px)" }}
                     animate={{ opacity: 1, filter: "blur(0px)" }}
                     exit={{ opacity: 0, filter: "blur(8px)" }}
@@ -214,47 +298,51 @@ export const Join = () => {
                 type="button"
                 onClick={handleRegenerateName}
                 variant="ghost"
-                className="text-xs text-neutral-500 hover:text-neutral-300 ml-2 h-6 px-2"
+                className="ml-2 h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
                 disabled={isJoining || isCreating}
               >
-                Regenerate
+                Shuffle
               </Button>
             </motion.div>
-            <div className="flex flex-col gap-3 mt-5">
+            <div className="mt-5 flex flex-col gap-3">
               <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
                 <Button
                   type="submit"
-                  className="w-full px-4 py-2 bg-primary hover:bg-primary/90 text-primary-foreground rounded-full font-medium text-sm cursor-pointer transition-all duration-300 flex items-center justify-center"
+                  className="flex w-full items-center justify-center rounded-full"
                   disabled={isJoining || isCreating}
                 >
-                  <LogIn size={16} className="mr-2" />
+                  <LogIn size={16} />
                   <span>{isJoining ? "Joining..." : "Join room"}</span>
                 </Button>
               </motion.div>
               <motion.div initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}>
                 <Button
                   type="button"
+                  variant="secondary"
                   onClick={handleCreateRoom}
-                  className="w-full px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-full font-medium text-sm cursor-pointer transition-all duration-300 flex items-center justify-center"
+                  className="flex w-full items-center justify-center rounded-full"
                   disabled={isJoining || isCreating}
                 >
-                  <PlusCircle size={16} className="mr-2" />
+                  <PlusCircle size={16} />
                   <span>{isCreating ? "Creating..." : "Create new room"}</span>
                 </Button>
               </motion.div>
             </div>
+            <p className="mt-3 text-center text-[11px] text-muted-foreground">
+              Use native device speakers.
+            </p>
           </form>
-          <motion.div className="w-full h-px bg-neutral-800 my-4" />
+          <motion.div className="my-4 h-px w-full bg-border" />
           <motion.div className="w-full">
             <AuthButtons />
           </motion.div>
-          <motion.div className="flex items-center gap-4 mt-4">
-            <a href={SOCIAL_LINKS.discord} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors text-xs">
+          <motion.div className="mt-4 flex items-center gap-4">
+            <a href={SOCIAL_LINKS.discord} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground">
               <FaDiscord className="size-[17px]" />
               <span>Join Community</span>
             </a>
-            <div className="w-px h-4 bg-neutral-700" />
-            <a href={SOCIAL_LINKS.github} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-neutral-400 hover:text-white transition-colors text-xs">
+            <div className="h-4 w-px bg-border" />
+            <a href={SOCIAL_LINKS.github} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 text-xs text-muted-foreground transition-colors hover:text-foreground">
               <FaGithub className="size-4" />
               <span>GitHub</span>
             </a>

@@ -22,16 +22,18 @@ describe('Spatial Audio Calculations', () => {
     });
 
     test('should decrease gain with distance', () => {
+      // Inside the reference distance (15 units) gain is clamped at max, so
+      // "near" here needs to be past that radius to actually show falloff.
       const nearGain = calculateGainFromDistanceToSource({
-        client: { x: 10, y: 0 },
+        client: { x: 20, y: 0 },
         source: { x: 0, y: 0 }
       });
-      
+
       const farGain = calculateGainFromDistanceToSource({
-        client: { x: 50, y: 0 },
+        client: { x: 60, y: 0 },
         source: { x: 0, y: 0 }
       });
-      
+
       expect(nearGain).toBeGreaterThan(farGain);
       expect(nearGain).toBeLessThan(1.0);
       expect(farGain).toBeGreaterThan(0);
@@ -123,14 +125,18 @@ describe('Spatial Audio Calculations', () => {
     });
 
     test('should provide reasonable gain at typical distances', () => {
-      // Test some typical grid distances
+      // Inverse-distance falloff, refDistance=15: gain = 15 / max(15, d).
+      // Distances at or inside refDistance clamp to max gain; beyond it,
+      // gain is smooth and continuous across the whole ~141-unit grid
+      // diagonal, unlike the old quadratic curve which flattened out by
+      // d≈29.
       const typicalDistances = [
         { distance: 0, expectedMin: 1.0, expectedMax: 1.0 },
-        { distance: 10, expectedMin: 0.7, expectedMax: 0.95 },
-        { distance: 25, expectedMin: 0.3, expectedMax: 0.8 },
-        { distance: 50, expectedMin: 0.15, expectedMax: 0.6 },
-        { distance: 75, expectedMin: 0.1, expectedMax: 0.4 },
-        { distance: 100, expectedMin: 0.05, expectedMax: 0.3 },
+        { distance: 10, expectedMin: 1.0, expectedMax: 1.0 },
+        { distance: 25, expectedMin: 0.55, expectedMax: 0.65 },
+        { distance: 50, expectedMin: 0.25, expectedMax: 0.35 },
+        { distance: 75, expectedMin: 0.15, expectedMax: 0.25 },
+        { distance: 100, expectedMin: 0.1, expectedMax: 0.2 },
       ];
       
       typicalDistances.forEach(({ distance, expectedMin, expectedMax }) => {

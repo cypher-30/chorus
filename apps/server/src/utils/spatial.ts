@@ -1,35 +1,31 @@
 import { ClientType, GRID } from "@chorus/shared";
 
 /**
- * Positions clients in a circle around a center point
+ * Positions clients in a circle around a center point.
+ *
+ * Clients with hasManualPosition (dragged into place via MOVE_CLIENT) are
+ * left where they are — only the remaining auto-placed clients are spread
+ * evenly around the circle, so a manual placement survives other clients
+ * joining or leaving.
  * @param clients Map of clients to position
  */
 export function positionClientsInCircle(
   clients: Map<string, ClientType>
 ): void {
-  const clientCount = clients.size;
+  const autoClients = Array.from(clients.values()).filter(
+    (client) => !client.hasManualPosition
+  );
+  const autoCount = autoClients.length;
 
-  // Early return for single client case
-  if (clientCount === 1) {
-    // Center the single client explicitly
-    const client = clients.values().next().value!;
-    client.position = {
-      x: GRID.ORIGIN_X,
-      y: GRID.ORIGIN_Y - 25,
-    };
-    return;
-  }
-
-  // Position multiple clients in a circle
-  let index = 0;
-  clients.forEach((client) => {
-    // Calculate position on the circle
-    const angle = (index / clientCount) * 2 * Math.PI - Math.PI / 2;
+  autoClients.forEach((client, index) => {
+    // Calculate position on the circle. For a single remaining client this
+    // reduces to angle = -π/2, i.e. straight up from center — the same
+    // point the old single-client special case set explicitly.
+    const angle = (index / autoCount) * 2 * Math.PI - Math.PI / 2;
     client.position = {
       x: GRID.ORIGIN_X + GRID.CLIENT_RADIUS * Math.cos(angle),
       y: GRID.ORIGIN_Y + GRID.CLIENT_RADIUS * Math.sin(angle),
     };
-    index++;
   });
 }
 

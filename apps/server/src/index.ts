@@ -3,6 +3,7 @@ import { handleStats } from "./routes/stats";
 import { handleGetPresignedURL, handleUploadComplete } from "./routes/upload";
 import { handleWebSocketUpgrade } from "./routes/websocket";
 import { handleGetDefaultAudio } from "./routes/default";
+import { handleHealth } from "./routes/health";
 import {
   handleClose,
   handleMessage,
@@ -46,6 +47,9 @@ const server = Bun.serve<WSData>({
 
         case "/stats":
           return handleStats();
+
+        case "/health":
+          return handleHealth(req);
 
         case "/default":
           return handleGetDefaultAudio(req);

@@ -34,12 +34,26 @@ export const handleWebSocketUpgrade = (
     requestedClientId && /^[\w-]{8,64}$/.test(requestedClientId)
       ? requestedClientId
       : nanoid();
+
+  const rawCountryCode =
+    req.headers.get("x-vercel-ip-country") ??
+    req.headers.get("cf-ipcountry") ??
+    "";
+  const countryCode = /^[A-Za-z]{2}$/.test(rawCountryCode)
+    ? rawCountryCode.toUpperCase()
+    : undefined;
+  const city = req.headers.get("x-vercel-ip-city") ?? undefined;
+  const region = req.headers.get("x-vercel-ip-country-region") ?? undefined;
+
   console.log(`User ${username} joined room ${roomId} with userId ${clientId}`);
 
   const data: WSData = {
     roomId,
     username,
     clientId,
+    countryCode,
+    city,
+    region,
   };
 
   // Upgrade the connection with the WSData context

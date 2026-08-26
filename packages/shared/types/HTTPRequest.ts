@@ -63,5 +63,25 @@ export const RoomSchema = z.object({
 });
 export type RoomType = z.infer<typeof RoomSchema>;
 
-export const GetActiveRoomsSchema = z.number();
+export const ActiveRoomTrackSchema = z.object({
+  title: z.string(),
+  artist: z.string().optional(),
+  artworkUrl: z.string().optional(),
+});
+export type ActiveRoomTrackType = z.infer<typeof ActiveRoomTrackSchema>;
+
+export const ActiveRoomSchema = z.object({
+  roomId: z.string(),
+  listenerCount: z.number().int().nonnegative(),
+  trackCount: z.number().int().nonnegative(),
+  currentTrack: ActiveRoomTrackSchema.nullable(),
+  hasSpatialAudio: z.boolean(),
+  countryCodes: z.array(z.string()),
+});
+export type ActiveRoomType = z.infer<typeof ActiveRoomSchema>;
+
+export const GetActiveRoomsSchema = z.object({
+  totalListeners: z.number().int().nonnegative(),
+  rooms: z.array(ActiveRoomSchema),
+});
 export type GetActiveRoomsType = z.infer<typeof GetActiveRoomsSchema>;

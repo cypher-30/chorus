@@ -14,9 +14,17 @@ const ClientSchema = z.object({
   clientId: z.string(),
   ws: z.any(),
   rtt: z.number().nonnegative().default(0), // Round-trip time in milliseconds
+  countryCode: z.string().optional(),
+  city: z.string().optional(),
+  region: z.string().optional(),
   position: PositionSchema,
   lastNtpResponse: z.number().default(0), // Last NTP response timestamp
   isAdmin: z.boolean().default(false), // Admin status
+  // Set once a client drags itself to a position via MOVE_CLIENT; excludes
+  // it from positionClientsInCircle's auto-layout until reset. Server-only —
+  // ClientDTOSchema below deliberately omits this, so it never reaches the
+  // wire.
+  hasManualPosition: z.boolean().default(false),
 });
 export type ClientType = z.infer<typeof ClientSchema>;
 

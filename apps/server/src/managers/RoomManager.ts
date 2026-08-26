@@ -156,8 +156,12 @@ export class RoomManager {
       ws,
       isAdmin,
       rtt: 0,
+      countryCode: ws.data.countryCode,
+      city: ws.data.city,
+      region: ws.data.region,
       position: { x: GRID.ORIGIN_X, y: GRID.ORIGIN_Y - 25 }, // Initial position at center
       lastNtpResponse: Date.now(), // Initialize last NTP response time
+      hasManualPosition: false,
     });
 
     positionClientsInCircle(this.clients);
@@ -497,7 +501,9 @@ export class RoomManager {
   }
 
   /**
-   * Reorder clients, moving the specified client to the front
+   * Reorder clients, moving the specified client to the front. Also resets
+   * the room's layout: any manual placements from moveClient are cleared,
+   * so this is the "Reset layout" action in the UI, not just a reorder.
    */
   reorderClients(clientId: string, server: Server<WSData>): ClientType[] {
     const clients = Array.from(this.clients.values());
@@ -511,9 +517,11 @@ export class RoomManager {
     const [client] = clients.splice(clientIndex, 1);
     clients.unshift(client);
 
-    // Update the clients map to maintain the new order
+    // Update the clients map to maintain the new order, clearing manual
+    // placements so every client goes back under circle auto-layout
     this.clients.clear();
     clients.forEach((client) => {
+      client.hasManualPosition = false;
       this.clients.set(client.clientId, client);
     });
 
@@ -527,7 +535,9 @@ export class RoomManager {
   }
 
   /**
-   * Move a client to a new position
+   * Move a client to a new (manually-placed) position. Marks it so future
+   * auto-layout passes (a join, a leave, another client's drag) leave it
+   * alone until the layout is explicitly reset.
    */
   moveClient(
     clientId: string,
@@ -538,6 +548,7 @@ export class RoomManager {
     if (!client) return;
 
     client.position = position;
+    client.hasManualPosition = true;
     this.clients.set(clientId, client);
 
     // Update spatial audio config

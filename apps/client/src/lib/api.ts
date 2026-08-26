@@ -1,5 +1,6 @@
 import {
   GetActiveRoomsType,
+  GetActiveRoomsSchema,
   GetDefaultAudioType,
   GetUploadUrlType,
   UploadCompleteResponseType,
@@ -105,9 +106,18 @@ export async function fetchDefaultAudioSources() {
 }
 
 export async function fetchActiveRooms() {
-  const response = await fetch(
-    `${process.env.NEXT_PUBLIC_API_URL}/active-rooms`
-  );
-  const data: GetActiveRoomsType = await response.json();
-  return data;
+  try {
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/active-rooms`
+    );
+
+    if (!response.ok) {
+      return { totalListeners: 0, rooms: [] } satisfies GetActiveRoomsType;
+    }
+
+    const data = await response.json();
+    return GetActiveRoomsSchema.parse(data);
+  } catch {
+    return { totalListeners: 0, rooms: [] } satisfies GetActiveRoomsType;
+  }
 }

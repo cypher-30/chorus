@@ -36,6 +36,8 @@ export type SpotifyTrack = {
   album: { images: { url: string }[] };
 };
 
+export type QueueAddResult = "added" | "duplicate" | "error";
+
 export const MAX_NTP_MEASUREMENTS = NTP_CONSTANTS.MAX_MEASUREMENTS;
 
 // https://webaudioapi.com/book/Web_Audio_API_Boris_Smus_html/ch02.html
@@ -133,6 +135,7 @@ interface GlobalState extends GlobalStateValues {
 
   setIsInitingSystem: (isIniting: boolean) => void;
   reorderClient: (clientId: string) => void;
+  moveClient: (clientId: string, position: PositionType) => void;
   setSelectedAudioUrl: (url: string) => boolean;
   findAudioIndexByUrl: (url: string) => number | null;
   schedulePlay: (data: {
@@ -192,7 +195,7 @@ interface GlobalState extends GlobalStateValues {
   // Spotify Methods
   setSpotifyDeviceId: (deviceId: string | null) => void;
   setCurrentTrack: (track: SpotifyTrack | null) => void;
-  addToQueue: (track: SpotifyTrack) => Promise<boolean>;
+  addToQueue: (track: SpotifyTrack) => Promise<QueueAddResult>;
   broadcastSpotifyPlay: (track: SpotifyTrack, trackTimeSeconds?: number) => void;
   playSpotifyTrack: (trackUri: string, positionSeconds?: number) => void;
   togglePlayPause: () => void;
@@ -518,13 +521,13 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       }
     },
     setCurrentTrack: (track) => set({ currentTrack: track }),
-  addToQueue: async (track) => {
+    addToQueue: async (track) => {
       const { audioSources, currentTrack, skipDuplicates } = get();
       const exists =
         audioSources.some(
           (s) => s.url === track.uri || s.spotifyUri === track.uri
         ) || currentTrack?.uri === track.uri;
-      if (exists && skipDuplicates) return false;
+      if (exists && skipDuplicates) return "duplicate";
 
       // Persist to server queue first; metadata rides on the source so every
       // client can render the row without a Spotify lookup
@@ -544,15 +547,16 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
             },
           }),
         });
-        if (!res.ok) throw new Error("Queue add failed");
+        if (!res.ok) throw new Error(`Queue add failed (${res.status})`);
       } catch (error) {
         capture("playlist_import_failure", {
           reason: "queue_add_failed",
           track_uri: track.uri,
         });
-        return false;
+        console.error("Failed to add track to queue", error);
+        return "error";
       }
-      return true;
+      return "added";
     },
     removeFromQueue: async (index) => {
       const { audioSources } = get();
@@ -772,6 +776,24 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
         request: {
           type: ClientActionEnum.enum.REORDER_CLIENT,
           clientId,
+        },
+      });
+    },
+
+    // Send-only: unlike the listening source, a device's own position isn't
+    // mirrored into any store field. SpatialMap keeps the optimistic
+    // position locally while dragging and falls back to the server-echoed
+    // connectedClients position once CLIENT_CHANGE catches up.
+    moveClient: (clientId, position) => {
+      const state = get();
+      const { socket } = getSocket(state);
+
+      sendWSRequest({
+        ws: socket,
+        request: {
+          type: ClientActionEnum.enum.MOVE_CLIENT,
+          clientId,
+          position,
         },
       });
     },
@@ -1327,11 +1349,13 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       }
 
       // Extract out what this client's gain is; the config may not include
-      // this client (e.g. right after a reconnect minted a new clientId)
+      // this client (e.g. right after a reconnect minted a new clientId).
+      // Ramp back to full volume rather than silently sticking at whatever
+      // gain this client last had — otherwise a reconnect can strand a
+      // device at a quiet gain with no way to recover but a reload.
       const userId = useRoomStore.getState().userId;
       const user = gains[userId];
-      if (!user) return;
-      const { gain, rampTime } = user;
+      const { gain, rampTime } = user ?? { gain: 1, rampTime: 0.25 };
 
       // Process
       const { audioContext, gainNode } = getAudioPlayer(state);
