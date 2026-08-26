@@ -54,8 +54,6 @@ Key places to read first:
 - `apps/server/src/websocket/` — type-safe message-type → handler registry
 - `packages/shared/types/` — the WebSocket message taxonomy (every message validated with Zod on receipt)
 
-`CLAUDE.md` has a deeper system map; `PLAN.md` tracks the bug audit and roadmap.
-
 ## Getting started
 
 Prerequisites: **Bun v1.2.x**.

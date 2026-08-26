@@ -59,7 +59,7 @@ export const handleOpen = async (
   // without a full page reload keeps the client's local queueVersion,
   // and the fresh room starts back at 0, so handleSetAudioSources's
   // out-of-order guard on the client still drops this message in that
-  // specific case — see PLAN.md's Known follow-ups.)
+  // specific case.)
   const { audioSources } = room.getState();
   console.log(
     `Sending ${audioSources.length} audio source(s) to newly joined client ${ws.data.username}`

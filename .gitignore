@@ -1,4 +1,5 @@
 *.ctx.md
+.vscode/
 
 # Add .turbo to your .gitignore file. The turbo CLI uses these folders for persisting logs, outputs, and other functionality.
 .turbo
