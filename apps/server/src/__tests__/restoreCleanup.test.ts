@@ -29,7 +29,13 @@ mock.module("../lib/r2", () => ({
   getLatestFileWithPrefix: mock(async () => "state-backup/backup-test.json"),
   getSortedFilesWithPrefix: mock(async () => []),
   deleteObject: mock(async () => {}),
-  validateAudioFileExists: mock(async () => true), // Mock to always return true for tests
+  // Small delay simulates the real R2 round-trip, giving tests a window to
+  // interleave a concurrent queue.json restore mid-validation (see the
+  // "closes the TOCTOU" test below).
+  validateAudioFileExists: mock(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 15));
+    return true;
+  }),
   cleanupOrphanedRooms: mock(async () => ({
     orphanedRooms: [],
     totalRooms: 0,
@@ -153,6 +159,45 @@ describe("Restore Cleanup", () => {
 
     // Room should be deleted
     expect(globalManager.hasRoom("test-room-1")).toBe(false);
+  });
+
+  it("should not overwrite a room's queue that was already populated before restore runs", async () => {
+    // Simulate handleOpen's queue.json restore (or a client adding a track)
+    // winning the race against BackupManager.restoreState, which runs
+    // unawaited at server startup (index.ts).
+    const room = globalManager.getOrCreateRoom("test-room-1");
+    room.setAudioSources([{ url: "https://example.com/already-here.mp3" }]);
+
+    const restored = await BackupManager.restoreState();
+    expect(restored).toBe(true);
+
+    // The pre-existing queue must survive — restoreState must not clobber
+    // it with the backup's (stale) audio sources.
+    expect(room.getState().audioSources).toEqual([
+      { url: "https://example.com/already-here.mp3" },
+    ]);
+  });
+
+  it("should not clobber a queue populated mid-flight, after validation has already started", async () => {
+    // The first version of the restore guard only checked audioSources
+    // once, before the (awaited, network-bound) validation step — a
+    // concurrent queue.json restore landing during that await would still
+    // get overwritten. Start the restore, let validation begin, populate
+    // the queue while it's in flight, then let the restore finish.
+    const restorePromise = BackupManager.restoreState();
+
+    // validateAudioFileExists sleeps 15ms; populate at 5ms so we're
+    // guaranteed to land inside that window, after the entry check but
+    // before the final write.
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const room = globalManager.getOrCreateRoom("test-room-1");
+    room.setAudioSources([{ url: "https://example.com/mid-flight.mp3" }]);
+
+    await restorePromise;
+
+    expect(room.getState().audioSources).toEqual([
+      { url: "https://example.com/mid-flight.mp3" },
+    ]);
   });
 
   it("should handle ghost clients correctly", async () => {

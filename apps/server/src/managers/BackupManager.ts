@@ -39,6 +39,23 @@ export class BackupManager {
     try {
       const room = globalManager.getOrCreateRoom(roomId);
 
+      // This restore runs at process startup, racing handleOpen's own
+      // queue.json restore (routes/websocketHandlers.ts) for ownership of
+      // audioSources — whichever finishes last wins, with no broadcast to
+      // announce the change. If a client has already populated (or restored)
+      // a queue for this room by the time we get here, leave it alone;
+      // queue.json is the newer, authoritative persistence path.
+      if (room.getState().audioSources.length > 0) {
+        return {
+          room: {
+            id: roomId,
+            numClients: roomData.clients.length,
+            numAudioSources: room.getState().audioSources.length,
+          },
+          success: true,
+        };
+      }
+
       // Concurrently validate all audio sources in R2 (no limit on concurrency)
       const validationPromises = roomData.audioSources.map((source) =>
         validateAudioFileExists(source.url)
@@ -49,6 +66,22 @@ export class BackupManager {
       const validAudioSources = roomData.audioSources.filter(
         (_, index) => validationResults[index]
       );
+
+      // Re-check right before the write: the validation await above is a
+      // network round-trip, wide enough for handleOpen's queue.json restore
+      // to land in between and populate audioSources after the earlier
+      // check passed. No further await happens between this check and the
+      // write, so this closes the race rather than narrowing it.
+      if (room.getState().audioSources.length > 0) {
+        return {
+          room: {
+            id: roomId,
+            numClients: roomData.clients.length,
+            numAudioSources: room.getState().audioSources.length,
+          },
+          success: true,
+        };
+      }
 
       // Restore audio sources
       room.setAudioSources(validAudioSources);

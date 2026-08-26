@@ -23,6 +23,11 @@ import { create } from "zustand";
 import { useRoomStore } from "./room";
 import { Mutex } from "async-mutex";
 import { extractFileNameFromUrl } from "@/lib/utils";
+import {
+  getCachedAudioBuffer,
+  putCachedAudioBuffer,
+  removeCachedAudioBuffer,
+} from "@/lib/audioBlobCache";
 
 export type SpotifyTrack = {
   uri: string;
@@ -292,9 +297,30 @@ const loadAudioSourceUrl = async ({
   url: string;
   audioContext: AudioContext;
 }) => {
+  const cachedBuffer = await getCachedAudioBuffer(url);
+  if (cachedBuffer) {
+    try {
+      const audioBuffer = await audioContext.decodeAudioData(cachedBuffer);
+      return {
+        audioBuffer,
+      };
+    } catch (error) {
+      // Corrupt cache entries should never block playback.
+      console.warn(`Cached audio decode failed for ${url}, refetching`, error);
+      await removeCachedAudioBuffer(url);
+    }
+  }
+
   const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch audio source: ${response.status}`);
+  }
+
   const arrayBuffer = await response.arrayBuffer();
-  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+  const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+
+  void putCachedAudioBuffer(url, arrayBuffer);
+
   return {
     audioBuffer,
   };

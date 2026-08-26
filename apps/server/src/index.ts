@@ -16,6 +16,8 @@ import { handleRoomExists } from "./routes/roomExists";
 import { handleQueueAdd, handleQueueSet } from "./routes/queue";
 import { startTelegramBot } from "./telegram/bot";
 
+const SHUTDOWN_BACKUP_TIMEOUT_MS = 8_000;
+
 // Bun.serve with WebSocket support
 const server = Bun.serve<WSData, undefined>({
   hostname: "0.0.0.0",
@@ -88,14 +90,31 @@ console.log(`HTTP listening on http://${server.hostname}:${server.port}`);
 // Optional Telegram upload bot (no-op if TELEGRAM_BOT_TOKEN is unset)
 startTelegramBot(server);
 
+// Restore best-effort room state from the latest backup.
+void BackupManager.restoreState();
+
 // Simple graceful shutdown
+let isShuttingDown = false;
 const shutdown = async () => {
+  if (isShuttingDown) return;
+  isShuttingDown = true;
+
   console.log("\n⚠️ Shutting down...");
 
   server.stop(); // Stop accepting new connections
 
-  // The line below was causing the crash. It is now disabled.
-  // await BackupManager.backupState(); // Save state
+  try {
+    await Promise.race([
+      BackupManager.backupState(),
+      new Promise((_, reject) => {
+        setTimeout(() => {
+          reject(new Error("Timed out while backing up state"));
+        }, SHUTDOWN_BACKUP_TIMEOUT_MS);
+      }),
+    ]);
+  } catch (error) {
+    console.error("⚠️ Backup on shutdown failed:", error);
+  }
 
   process.exit(0);
 };

@@ -1,4 +1,4 @@
-import { jsonResponse, errorResponse } from "../utils/responses";
+import { jsonResponse, errorResponse, corsHeaders } from "../utils/responses";
 import { globalManager } from "../managers";
 import { Server } from "bun";
 import {
@@ -8,6 +8,7 @@ import {
 } from "@chorus/shared";
 import { z } from "zod";
 import { uploadJSON, getQueueKey } from "../lib/r2";
+import { checkRateLimit, getRequestIp } from "../utils/rateLimit";
 
 const QueueSetSchema = z.object({
   roomId: RoomIdSchema,
@@ -19,6 +20,27 @@ const QueueAddSchema = z.object({
   source: AudioSourceSchema,
 });
 
+const QUEUE_RATE_LIMIT_WINDOW_MS = 10_000;
+const QUEUE_RATE_LIMIT_MAX = 40;
+
+const getRateLimitError = (retryAfterSeconds: number) =>
+  new Response("Too many queue updates", {
+    status: 429,
+    headers: {
+      ...corsHeaders,
+      "Retry-After": String(retryAfterSeconds),
+    },
+  });
+
+const checkQueueRateLimit = (req: Request, server: Server, roomId: string) => {
+  const ip = getRequestIp(req, server);
+  return checkRateLimit({
+    key: `queue:${roomId}:${ip}`,
+    limit: QUEUE_RATE_LIMIT_MAX,
+    windowMs: QUEUE_RATE_LIMIT_WINDOW_MS,
+  });
+};
+
 export async function handleQueueSet(req: Request, server: Server) {
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
   try {
@@ -27,6 +49,12 @@ export async function handleQueueSet(req: Request, server: Server) {
       return errorResponse("roomId (6 digits) and sources required", 400);
     }
     const { roomId, sources } = parsed.data;
+
+    const rateLimitResult = checkQueueRateLimit(req, server, roomId);
+    if (!rateLimitResult.allowed) {
+      return getRateLimitError(rateLimitResult.retryAfterSeconds);
+    }
+
     const room = globalManager.getRoom(roomId);
     if (!room) return errorResponse("Room not found", 404);
     room.setAudioSources(sources);
@@ -51,6 +79,12 @@ export async function handleQueueAdd(req: Request, server: Server) {
       return errorResponse("roomId (6 digits) and source required", 400);
     }
     const { roomId, source } = parsed.data;
+
+    const rateLimitResult = checkQueueRateLimit(req, server, roomId);
+    if (!rateLimitResult.allowed) {
+      return getRateLimitError(rateLimitResult.retryAfterSeconds);
+    }
+
     const room = globalManager.getRoom(roomId);
     if (!room) return errorResponse("Room not found", 404);
     const updated = room.addAudioSource(source);
