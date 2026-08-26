@@ -1515,6 +1515,25 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
       for (const source of newSources) {
         await processNewAudioSource({ url: source.url });
       }
+
+      // Drop the IndexedDB cache entry for any R2-hosted URL that dropped
+      // out of the queue (removed, replaced by a Telegram match, or the
+      // room was cleaned up and rebuilt). Without this, a stale cached
+      // buffer for a URL the server no longer considers current would
+      // still decode successfully — silently playing a lone device out of
+      // sync with the room instead of failing loudly like an unfetchable
+      // URL would.
+      const staleUrls = state.audioSources
+        .map((source) => source.url)
+        .filter(
+          (url) =>
+            !url.startsWith("spotify:") &&
+            !enriched.some((source) => source.url === url)
+        );
+      for (const url of staleUrls) {
+        void removeCachedAudioBuffer(url);
+      }
+
       // Adopt the full server list (covers removals/reorders; buffers for
       // web-audio entries live in audioCache)
       set({ audioSources: enriched });

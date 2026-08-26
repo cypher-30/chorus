@@ -91,7 +91,7 @@ console.log(`HTTP listening on http://${server.hostname}:${server.port}`);
 startTelegramBot(server);
 
 // Restore best-effort room state from the latest backup.
-void BackupManager.restoreState();
+void BackupManager.restoreState(server);
 
 // Simple graceful shutdown
 let isShuttingDown = false;

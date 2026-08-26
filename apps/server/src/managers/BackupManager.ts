@@ -1,4 +1,6 @@
 import pLimit from "p-limit";
+import type { Server } from "bun";
+import type { WSBroadcastType } from "@chorus/shared";
 import {
   cleanupOrphanedRooms,
   deleteObject,
@@ -34,7 +36,8 @@ export class BackupManager {
    */
   private static async restoreRoom(
     roomId: string,
-    roomData: RoomBackupType
+    roomData: RoomBackupType,
+    server?: Server
   ): Promise<RoomRestoreResult> {
     try {
       const room = globalManager.getOrCreateRoom(roomId);
@@ -85,6 +88,19 @@ export class BackupManager {
 
       // Restore audio sources
       room.setAudioSources(validAudioSources);
+
+      // A client can join between process start and this restore finishing
+      // (the R2 validation above is a network round-trip); handleOpen would
+      // have sent them an empty queue on join and has no reason to send
+      // another one. Tell any such clients about the queue we just filled
+      // in — a no-op publish if nobody is subscribed to this room's topic.
+      if (server && room.hasActiveConnections()) {
+        const message: WSBroadcastType = {
+          type: "ROOM_EVENT",
+          event: { type: "SET_AUDIO_SOURCES", ...room.getQueueState() },
+        };
+        server.publish(roomId, JSON.stringify(message));
+      }
 
       // Always schedule cleanup on restoration because we don't know if any clients will reconnect.
       globalManager.scheduleRoomCleanup(roomId);
@@ -166,7 +182,7 @@ export class BackupManager {
   /**
    * Restore server state from the latest backup in R2
    */
-  static async restoreState(): Promise<boolean> {
+  static async restoreState(server?: Server): Promise<boolean> {
     try {
       console.log("🔍 Looking for state backups...");
 
@@ -213,7 +229,7 @@ export class BackupManager {
 
       // Process rooms in parallel with concurrency control using p-limit
       const restorePromises = roomEntries.map(([roomId, roomData]) =>
-        limit(() => this.restoreRoom(roomId, roomData))
+        limit(() => this.restoreRoom(roomId, roomData, server))
       );
 
       const results = await Promise.allSettled(restorePromises);

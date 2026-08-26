@@ -200,6 +200,45 @@ describe("Restore Cleanup", () => {
     ]);
   });
 
+  it("should broadcast SET_AUDIO_SOURCES to clients that joined a room before its restore finished", async () => {
+    // A client can connect (and get handleOpen's empty-queue response)
+    // during the window between server startup and restoreState finishing.
+    // They have no reason to expect another SET_AUDIO_SOURCES, so restore
+    // must push one if it fills a room that already has a live client.
+    const room = globalManager.getOrCreateRoom("test-room-1");
+    const mockWs = {
+      data: {
+        username: "realuser",
+        clientId: "real-client-1",
+        roomId: "test-room-1",
+      },
+      readyState: 1, // OPEN
+      subscribe: mock(() => {}),
+      send: mock(() => {}),
+    };
+    room.addClient(mockWs as any);
+    expect(room.hasActiveConnections()).toBe(true);
+
+    const fakeServer = { publish: mock(() => {}) };
+    await BackupManager.restoreState(fakeServer as any);
+
+    expect(fakeServer.publish).toHaveBeenCalledTimes(1);
+    const [topic, payload] = fakeServer.publish.mock.calls[0];
+    expect(topic).toBe("test-room-1");
+    const message = JSON.parse(payload as string);
+    expect(message.event.type).toBe("SET_AUDIO_SOURCES");
+    // AudioSourceSchema strips unrecognized fields (id/name from the
+    // backup fixture); only url survives.
+    expect(message.event.sources).toEqual([{ url: "test.mp3" }]);
+  });
+
+  it("should not broadcast for restored rooms with no active connections", async () => {
+    const fakeServer = { publish: mock(() => {}) };
+    await BackupManager.restoreState(fakeServer as any);
+
+    expect(fakeServer.publish).not.toHaveBeenCalled();
+  });
+
   it("should handle ghost clients correctly", async () => {
     // Create a room with a ghost client (no WebSocket)
     const room = globalManager.getOrCreateRoom("ghost-room");
