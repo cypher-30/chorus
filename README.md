@@ -20,7 +20,7 @@ A **Sync measurement** panel in the room dashboard shows live drift, clock offse
 | Path | How it plays | Sync quality |
 |---|---|---|
 | **Uploaded files** | Each client downloads the file from R2 and plays it via the Web Audio API at a server-scheduled timestamp | **Tight** — this is the "one big speaker" path (~tens of ms across devices) |
-| **Spotify** | Each signed-in user's own Spotify Premium account plays via the Web Playback SDK | **Best effort only** — Spotify gives no scheduled start or sample-level control, so devices land within a few hundred ms of each other |
+| **Spotify** | Discovery metadata + optional per-user playback control integrations (search, resolve, playlists, recommendations, play/pause/tracks) | **Not the core sync path** — room-wide scheduled sync is built around uploaded files |
 
 Rooms also get a server-authoritative shared queue (one shuffle decision for the whole room, no duplicate auto-advance), admin roles with optional admin-only playback control, synced seeking, and an experimental spatial-audio mode that pans volume across devices by their position in the room.
 
@@ -100,7 +100,6 @@ Files are capped at ~20 MB by Telegram's bot download limit, which covers normal
 cd apps/server && bun test        # server suite (sync, queue, advance, permissions, RTT)
 cd apps/server && bun run type-check
 cd apps/client && bunx tsc --noEmit
-bun run cleanup                   # dry-run orphaned R2 cleanup (:live to delete)
 ```
 
 ### Trying the sync
