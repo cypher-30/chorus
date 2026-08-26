@@ -1,7 +1,8 @@
 import { describe, expect, it, beforeEach, mock } from "bun:test";
 import { handleOpen } from "../routes/websocketHandlers";
 import { globalManager } from "../managers/GlobalManager";
-import { Server } from "bun";
+import type { Server } from "bun";
+import type { WSData } from "../utils/websocket";
 
 // Mock the sendBroadcast and sendUnicast functions
 mock.module("../utils/responses", () => ({
@@ -52,8 +53,8 @@ describe("WebSocket Handlers (Simplified Tests)", () => {
       };
 
       const mockServer = {
-        publish: mock(() => {}),
-      } as unknown as Server;
+        publish: mock((_topic: string, _payload: string) => 0),
+      } as unknown as Server<WSData>;
 
       // Simulate client connection
       await handleOpen(mockWs as any, mockServer);
@@ -102,8 +103,8 @@ describe("WebSocket Handlers (Simplified Tests)", () => {
       };
 
       const mockServer = {
-        publish: mock(() => {}),
-      } as unknown as Server;
+        publish: mock((_topic: string, _payload: string) => 0),
+      } as unknown as Server<WSData>;
 
       // Simulate client connection
       await handleOpen(mockWs as any, mockServer);
@@ -163,8 +164,8 @@ describe("WebSocket Handlers (Simplified Tests)", () => {
       };
 
       const mockServer = {
-        publish: mock(() => {}),
-      } as unknown as Server;
+        publish: mock((_topic: string, _payload: string) => 0),
+      } as unknown as Server<WSData>;
 
       // Both clients connect
       await handleOpen(mockWs1 as any, mockServer);
@@ -208,8 +209,8 @@ describe("WebSocket Handlers (Simplified Tests)", () => {
       };
 
       const mockServer = {
-        publish: mock(() => {}),
-      } as unknown as Server;
+        publish: mock((_topic: string, _payload: string) => 0),
+      } as unknown as Server<WSData>;
 
       // Verify room doesn't exist yet
       expect(globalManager.hasRoom(roomId)).toBe(false);

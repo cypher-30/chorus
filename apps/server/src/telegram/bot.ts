@@ -1,5 +1,5 @@
 import { RoomIdSchema, WSBroadcastType } from "@chorus/shared";
-import { Server } from "bun";
+import type { Server } from "bun";
 import { globalManager } from "../managers";
 import {
   generateAudioFileName,
@@ -7,6 +7,7 @@ import {
   uploadAudioBuffer,
   uploadJSON,
 } from "../lib/r2";
+import type { WSData } from "../utils/websocket";
 
 /**
  * Telegram bot that acts as an audio-upload channel for Chorus rooms.
@@ -49,7 +50,7 @@ interface TgUpdate {
   message?: TgMessage;
 }
 
-export function startTelegramBot(server: Server): void {
+export function startTelegramBot(server: Server<WSData>): void {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) {
     console.log("ℹ️ Telegram bot disabled (TELEGRAM_BOT_TOKEN not set)");

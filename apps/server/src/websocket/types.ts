@@ -3,7 +3,7 @@ import {
   ExtractWSRequestFrom,
   WSRequestType,
 } from "@chorus/shared";
-import { Server, ServerWebSocket } from "bun";
+import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
 import { WSData } from "../utils/websocket";
 
@@ -11,7 +11,7 @@ import { WSData } from "../utils/websocket";
 export type HandlerFunction<T = WSRequestType> = (data: {
   ws: ServerWebSocket<WSData>;
   message: T;
-  server: Server;
+  server: Server<WSData>;
 }) => Promise<void>;
 
 // Handler definition map type

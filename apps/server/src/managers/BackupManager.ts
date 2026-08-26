@@ -16,6 +16,7 @@ import {
   ServerBackupSchema,
   ServerBackupType,
 } from "./RoomManager";
+import type { WSData } from "../utils/websocket";
 
 interface RoomRestoreResult {
   room: {
@@ -37,7 +38,7 @@ export class BackupManager {
   private static async restoreRoom(
     roomId: string,
     roomData: RoomBackupType,
-    server?: Server
+    server?: Server<WSData>
   ): Promise<RoomRestoreResult> {
     try {
       const room = globalManager.getOrCreateRoom(roomId);
@@ -182,7 +183,7 @@ export class BackupManager {
   /**
    * Restore server state from the latest backup in R2
    */
-  static async restoreState(server?: Server): Promise<boolean> {
+  static async restoreState(server?: Server<WSData>): Promise<boolean> {
     try {
       console.log("🔍 Looking for state backups...");
 

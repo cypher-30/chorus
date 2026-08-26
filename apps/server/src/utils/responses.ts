@@ -1,5 +1,5 @@
 import { WSBroadcastType, WSUnicastType } from "@chorus/shared";
-import { Server, ServerWebSocket } from "bun";
+import type { Server, ServerWebSocket } from "bun";
 import { WSData } from "./websocket";
 
 export const corsHeaders = {
@@ -27,7 +27,7 @@ export const sendBroadcast = ({
   roomId,
   message,
 }: {
-  server: Server;
+  server: Server<WSData>;
   roomId: string;
   message: WSBroadcastType;
 }) => {

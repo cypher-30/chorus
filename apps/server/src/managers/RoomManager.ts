@@ -13,7 +13,7 @@ import {
   WSBroadcastType,
 } from "@chorus/shared";
 import { AudioSourceSchema, GRID } from "@chorus/shared/types/basic";
-import { Server, ServerWebSocket } from "bun";
+import type { Server, ServerWebSocket } from "bun";
 import { z } from "zod";
 import { SCHEDULE_TIME_MS } from "../config";
 import {
@@ -499,7 +499,7 @@ export class RoomManager {
   /**
    * Reorder clients, moving the specified client to the front
    */
-  reorderClients(clientId: string, server: Server): ClientType[] {
+  reorderClients(clientId: string, server: Server<WSData>): ClientType[] {
     const clients = Array.from(this.clients.values());
     const clientIndex = clients.findIndex(
       (client) => client.clientId === clientId
@@ -529,7 +529,11 @@ export class RoomManager {
   /**
    * Move a client to a new position
    */
-  moveClient(clientId: string, position: PositionType, server: Server): void {
+  moveClient(
+    clientId: string,
+    position: PositionType,
+    server: Server<WSData>
+  ): void {
     const client = this.clients.get(clientId);
     if (!client) return;
 
@@ -543,7 +547,10 @@ export class RoomManager {
   /**
    * Update the listening source position
    */
-  updateListeningSource(position: PositionType, server: Server): void {
+  updateListeningSource(
+    position: PositionType,
+    server: Server<WSData>
+  ): void {
     this.listeningSource = position;
     this._calculateGainsAndBroadcast(server);
   }
@@ -551,7 +558,7 @@ export class RoomManager {
   /**
    * Start spatial audio interval
    */
-  startSpatialAudio(server: Server): void {
+  startSpatialAudio(server: Server<WSData>): void {
     // Don't start if already running
     if (this.intervalId) return;
 
@@ -776,7 +783,7 @@ export class RoomManager {
   /**
    * Calculate gains and broadcast to all clients
    */
-  private _calculateGainsAndBroadcast(server: Server): void {
+  private _calculateGainsAndBroadcast(server: Server<WSData>): void {
     const clients = Array.from(this.clients.values());
 
     const gains = Object.fromEntries(

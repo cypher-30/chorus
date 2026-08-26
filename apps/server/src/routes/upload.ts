@@ -5,7 +5,7 @@ import {
   UploadUrlResponseType,
   WSBroadcastType,
 } from "@chorus/shared";
-import { Server } from "bun";
+import type { Server } from "bun";
 import { errorResponse, jsonResponse } from "../utils/responses";
 import { globalManager } from "../managers";
 import {
@@ -15,6 +15,7 @@ import {
   getQueueKey,
   uploadJSON,
 } from "../lib/r2";
+import type { WSData } from "../utils/websocket";
 
 export const handleGetPresignedURL = async (req: Request) => {
   if (req.method !== "POST") {
@@ -43,7 +44,10 @@ export const handleGetPresignedURL = async (req: Request) => {
   }
 };
 
-export const handleUploadComplete = async (req: Request, server: Server) => {
+export const handleUploadComplete = async (
+  req: Request,
+  server: Server<WSData>
+) => {
   if (req.method !== "POST") {
     return errorResponse("Method not allowed", 405);
   }

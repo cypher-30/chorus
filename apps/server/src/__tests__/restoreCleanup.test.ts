@@ -219,7 +219,9 @@ describe("Restore Cleanup", () => {
     room.addClient(mockWs as any);
     expect(room.hasActiveConnections()).toBe(true);
 
-    const fakeServer = { publish: mock(() => {}) };
+    const fakeServer = {
+      publish: mock((_topic: string, _payload: string) => 0),
+    };
     await BackupManager.restoreState(fakeServer as any);
 
     expect(fakeServer.publish).toHaveBeenCalledTimes(1);
@@ -233,7 +235,9 @@ describe("Restore Cleanup", () => {
   });
 
   it("should not broadcast for restored rooms with no active connections", async () => {
-    const fakeServer = { publish: mock(() => {}) };
+    const fakeServer = {
+      publish: mock((_topic: string, _payload: string) => 0),
+    };
     await BackupManager.restoreState(fakeServer as any);
 
     expect(fakeServer.publish).not.toHaveBeenCalled();

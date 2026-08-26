@@ -19,7 +19,7 @@ import { startTelegramBot } from "./telegram/bot";
 const SHUTDOWN_BACKUP_TIMEOUT_MS = 8_000;
 
 // Bun.serve with WebSocket support
-const server = Bun.serve<WSData, undefined>({
+const server = Bun.serve<WSData>({
   hostname: "0.0.0.0",
   port: 8080,
   async fetch(req, server) {

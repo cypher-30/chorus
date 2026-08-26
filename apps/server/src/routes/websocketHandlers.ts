@@ -4,7 +4,7 @@ import {
   WSBroadcastType,
   WSRequestSchema,
 } from "@chorus/shared";
-import { Server, ServerWebSocket } from "bun";
+import type { Server, ServerWebSocket } from "bun";
 import { globalManager } from "../managers";
 import { sendBroadcast, sendUnicast } from "../utils/responses";
 import { WSData } from "../utils/websocket";
@@ -27,7 +27,7 @@ export const createClientUpdate = (roomId: string) => {
 
 export const handleOpen = async (
   ws: ServerWebSocket<WSData>,
-  server: Server
+  server: Server<WSData>
 ) => {
   console.log(
     `WebSocket connection opened for user ${ws.data.username} in room ${ws.data.roomId}`
@@ -81,7 +81,7 @@ export const handleOpen = async (
 export const handleMessage = async (
   ws: ServerWebSocket<WSData>,
   message: string | Buffer,
-  server: Server
+  server: Server<WSData>
 ) => {
   const t1 = epochNow(); // Always calculate this immediately
   const { roomId, username } = ws.data;
@@ -115,7 +115,7 @@ export const handleMessage = async (
 
 export const handleClose = async (
   ws: ServerWebSocket<WSData>,
-  server: Server
+  server: Server<WSData>
 ) => {
   try {
     console.log(

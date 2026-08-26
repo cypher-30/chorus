@@ -1,6 +1,7 @@
 import { describe, expect, it, beforeEach, mock } from "bun:test";
 import { epochNow } from "@chorus/shared";
-import { Server } from "bun";
+import type { Server } from "bun";
+import type { WSData } from "../utils/websocket";
 
 // Mock broadcast/unicast so handlers don't need a real Bun server
 const sendBroadcastMock = mock(() => {});
@@ -34,7 +35,9 @@ const makeWs = (roomId: string, clientId: string, username = "user") =>
     send: mock(() => {}),
   }) as any;
 
-const mockServer = { publish: mock(() => {}) } as unknown as Server;
+const mockServer = {
+  publish: mock((_topic: string, _payload: string) => 0),
+} as unknown as Server<WSData>;
 
 describe("Server-authoritative playback advance", () => {
   beforeEach(async () => {

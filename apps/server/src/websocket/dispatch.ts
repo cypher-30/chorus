@@ -1,5 +1,5 @@
 import { WSRequestType } from "@chorus/shared";
-import { Server, ServerWebSocket } from "bun";
+import type { Server, ServerWebSocket } from "bun";
 import { WSData } from "../utils/websocket";
 import { WS_REGISTRY } from "./registry";
 
@@ -20,7 +20,7 @@ export async function dispatchMessage({
 }: {
   ws: ServerWebSocket<WSData>;
   message: WSRequestType;
-  server: Server;
+  server: Server<WSData>;
 }): Promise<void> {
   const handler = WS_REGISTRY[message.type];
 

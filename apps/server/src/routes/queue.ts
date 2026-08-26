@@ -1,6 +1,6 @@
 import { jsonResponse, errorResponse, corsHeaders } from "../utils/responses";
 import { globalManager } from "../managers";
-import { Server } from "bun";
+import type { Server } from "bun";
 import {
   AudioSourceSchema,
   RoomIdSchema,
@@ -9,6 +9,7 @@ import {
 import { z } from "zod";
 import { uploadJSON, getQueueKey } from "../lib/r2";
 import { checkRateLimit, getRequestIp } from "../utils/rateLimit";
+import type { WSData } from "../utils/websocket";
 
 const QueueSetSchema = z.object({
   roomId: RoomIdSchema,
@@ -32,7 +33,11 @@ const getRateLimitError = (retryAfterSeconds: number) =>
     },
   });
 
-const checkQueueRateLimit = (req: Request, server: Server, roomId: string) => {
+const checkQueueRateLimit = (
+  req: Request,
+  server: Server<WSData>,
+  roomId: string
+) => {
   const ip = getRequestIp(req, server);
   return checkRateLimit({
     key: `queue:${roomId}:${ip}`,
@@ -41,7 +46,7 @@ const checkQueueRateLimit = (req: Request, server: Server, roomId: string) => {
   });
 };
 
-export async function handleQueueSet(req: Request, server: Server) {
+export async function handleQueueSet(req: Request, server: Server<WSData>) {
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
   try {
     const parsed = QueueSetSchema.safeParse(await req.json());
@@ -71,7 +76,7 @@ export async function handleQueueSet(req: Request, server: Server) {
   }
 }
 
-export async function handleQueueAdd(req: Request, server: Server) {
+export async function handleQueueAdd(req: Request, server: Server<WSData>) {
   if (req.method !== "POST") return errorResponse("Method not allowed", 405);
   try {
     const parsed = QueueAddSchema.safeParse(await req.json());
