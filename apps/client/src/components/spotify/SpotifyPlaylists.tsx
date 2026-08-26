@@ -84,9 +84,11 @@ export function SpotifyPlaylists() {
           continue;
         }
         seen.add(track.uri);
-        const success = await addToQueue(track);
-        if (success) {
+        const result = await addToQueue(track);
+        if (result === "added") {
           added += 1;
+        } else if (result === "duplicate") {
+          skipped += 1;
         } else {
           failed.push(track);
         }
@@ -134,15 +136,15 @@ export function SpotifyPlaylists() {
   const retryFailed = async (id: string, name: string) => {
     const pending = failedTracks[id] || [];
     if (pending.length === 0) return;
-    setFailedTracks((prev) => ({ ...prev, [id]: [] }));
+    const stillFailed: SpotifyTrack[] = [];
     for (const track of pending) {
-      const success = await addToQueue(track);
-      if (!success) {
-        setFailedTracks((prev) => ({ ...prev, [id]: [track, ...(prev[id] || [])] }));
+      const result = await addToQueue(track);
+      if (result === "error") {
+        stillFailed.push(track);
       }
     }
-    const remaining = (failedTracks[id] || []).length;
-    if (remaining === 0) {
+    setFailedTracks((prev) => ({ ...prev, [id]: stillFailed }));
+    if (stillFailed.length === 0) {
       toast.success(`Retried failed tracks for ${name}`);
     } else {
       toast.error(`Some tracks still failed to add for ${name}`);

@@ -108,6 +108,25 @@ export function startTelegramBot(server: Server<WSData>): void {
     "to that track from the /tracks list\n\n" +
     "Then hit play in the app and every device plays it in sync.";
 
+  const normalizeForMatch = (text: string): string =>
+    text
+      .toLowerCase()
+      .replace(/\.[a-z0-9]{1,5}$/i, "")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+
+  const extractSpotifyTrackId = (text: string): string | null => {
+    const uriMatch = text.match(/spotify:track:([A-Za-z0-9]+)/i);
+    if (uriMatch) return uriMatch[1];
+
+    const urlMatch = text.match(
+      /https?:\/\/(?:open\.)?spotify\.com\/(?:intl-[a-z]+\/)?track\/([A-Za-z0-9]+)/i
+    );
+    if (urlMatch) return urlMatch[1];
+
+    return null;
+  };
+
   // Download a Telegram file and upload it into the room's R2 storage.
   // Returns the public URL, or null after messaging the user about the error.
   const fetchAndUpload = async (
@@ -178,13 +197,15 @@ export function startTelegramBot(server: Server<WSData>): void {
       return;
     }
 
-    // A numeric caption targets a pending track from the /tracks list;
-    // validate before downloading anything
-    const trackNumber = caption && /^\d+$/.test(caption) ? Number(caption) : null;
+    // A caption can target a pending track before downloading anything.
+    // Supported forms:
+    // - Numeric: "1", "#1", "1.", "1 - ..."
+    // - Spotify link/URI with the same track ID as a pending entry
+    // - A unique title/artist text match against /tracks
+    const pending = room.getPendingTracks();
     let pendingIndex: number | null = null;
     let pendingTitle = "";
-    if (trackNumber !== null) {
-      const pending = room.getPendingTracks();
+    if (caption) {
       if (pending.length === 0) {
         await sendMessage(
           chatId,
@@ -192,15 +213,73 @@ export function startTelegramBot(server: Server<WSData>): void {
         );
         return;
       }
-      if (trackNumber < 1 || trackNumber > pending.length) {
+
+      const trackNumberMatch = caption.match(/^\s*#?(\d{1,3})(?:\s|[).:_-]|$)/);
+      if (trackNumberMatch) {
+        const trackNumber = Number(trackNumberMatch[1]);
+        if (trackNumber < 1 || trackNumber > pending.length) {
+          await sendMessage(
+            chatId,
+            `Track ${trackNumber} doesn't exist — /tracks currently lists 1 to ${pending.length}.`
+          );
+          return;
+        }
+        pendingIndex = pending[trackNumber - 1].index;
+        pendingTitle = pending[trackNumber - 1].title;
+      }
+
+      if (pendingIndex === null) {
+        const spotifyTrackId = extractSpotifyTrackId(caption);
+        if (spotifyTrackId) {
+          const bySpotifyId = pending.find((track) => {
+            const source = room.getState().audioSources[track.index];
+            const pendingUri = source?.spotifyUri ?? source?.url;
+            return (
+              typeof pendingUri === "string" &&
+              pendingUri.endsWith(`:${spotifyTrackId}`)
+            );
+          });
+          if (bySpotifyId) {
+            pendingIndex = bySpotifyId.index;
+            pendingTitle = bySpotifyId.title;
+          }
+        }
+      }
+
+      if (pendingIndex === null) {
+        const normalizedCaption = normalizeForMatch(caption);
+        if (normalizedCaption.length >= 4) {
+          const matches = pending.filter((track) => {
+            const normalizedTrack = normalizeForMatch(
+              `${track.title} ${track.artist ?? ""}`
+            );
+            return (
+              normalizedTrack.includes(normalizedCaption) ||
+              normalizedCaption.includes(normalizedTrack)
+            );
+          });
+
+          if (matches.length === 1) {
+            pendingIndex = matches[0].index;
+            pendingTitle = matches[0].title;
+          }
+          if (matches.length > 1) {
+            await sendMessage(
+              chatId,
+              "That caption matches multiple pending tracks. Send /tracks and use a specific track number in the caption."
+            );
+            return;
+          }
+        }
+      }
+
+      if (pendingIndex === null) {
         await sendMessage(
           chatId,
-          `Track ${trackNumber} doesn't exist — /tracks currently lists 1 to ${pending.length}.`
+          "Couldn't match that caption to a pending track. Send /tracks and use the track number as the caption (for example: 1)."
         );
         return;
       }
-      pendingIndex = pending[trackNumber - 1].index;
-      pendingTitle = pending[trackNumber - 1].title;
     }
 
     try {
@@ -220,7 +299,7 @@ export function startTelegramBot(server: Server<WSData>): void {
         await publishQueue(roomId, room);
         await sendMessage(
           chatId,
-          `Track ${trackNumber} ("${pendingTitle}") is now synced ✅`
+          `Track "${pendingTitle}" is now synced ✅`
         );
         return;
       }

@@ -3,6 +3,7 @@
 
 import { useState } from "react";
 import { useSession } from "next-auth/react";
+import { toast } from "sonner";
 import { Input } from "./ui/input";
 import { Button } from "./ui/button";
 import { SpotifyTrack, useGlobalStore } from "@/store/global";
@@ -13,6 +14,19 @@ export function SpotifySearch() {
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<SpotifyTrack[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+
+  const handleAddTrack = async (track: SpotifyTrack) => {
+    const result = await addToQueue(track);
+    if (result === "added") {
+      toast.success(`Added "${track.name}" to queue (Needs audio)`);
+      return;
+    }
+    if (result === "duplicate") {
+      toast.info(`"${track.name}" is already in the queue`);
+      return;
+    }
+    toast.error("Failed to add track to queue");
+  };
 
   const handleSearch = async () => {
     if (!searchQuery || !session?.accessToken) return;
@@ -74,7 +88,7 @@ export function SpotifySearch() {
                 </p>
               </div>
             </div>
-            <Button onClick={() => addToQueue(track)} size="sm" className="ml-2 flex-shrink-0">
+            <Button onClick={() => void handleAddTrack(track)} size="sm" className="ml-2 flex-shrink-0">
               Add
             </Button>
           </div>
