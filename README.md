@@ -24,6 +24,21 @@ A **Sync measurement** panel in the room dashboard shows live drift, clock offse
 
 Rooms also get a server-authoritative shared queue (one shuffle decision for the whole room, no duplicate auto-advance), admin roles with optional admin-only playback control, synced seeking, and an experimental spatial-audio mode that pans volume across devices by their position in the room.
 
+## Recent updates (why these were added)
+
+- **Room UI redesign (landing + in-room shell)**: the room experience now uses a card-based `RoomShell` layout with responsive sheet panels for queue/devices/sync controls, replacing the previous dashboard split.
+   Why: this reduces visual clutter while keeping every control path available on desktop and mobile.
+- **Manual device positioning for spatial audio**: users can now drag their own device in the room map, and that placement persists across normal joins/leaves until "Reset layout" is used.
+   Why: this makes spatial panning intentionally placeable instead of purely auto-arranged.
+- **Live "Playing Now" landing cards**: the join page now shows active rooms with track title, listener count, queue length, quick-join action, and coarse presence hints (country flags when available).
+   Why: this gives newcomers immediate proof the system is alive and reduces friction to joining active sessions.
+- **Richer `/active-rooms` payload**: server now returns `{ totalListeners, rooms[] }` instead of a single number, so the homepage can render meaningful room previews.
+   Why: the old count-only endpoint could not power discovery or quick room hopping.
+- **Optional coarse location metadata from edge headers** (`x-vercel-ip-country` / `cf-ipcountry`): used only for aggregated room presence badges.
+   Why: this mirrors BeatSync's global-presence feel without depending on third-party geolocation APIs.
+- **`/health` endpoint**: returns basic service health (`status`, uptime, active rooms/listeners).
+   Why: simplifies deployment checks, uptime monitors, and quick debugging.
+
 ## Monorepo layout
 
 ```
@@ -87,9 +102,13 @@ file has to land in the room's queue. The flow:
    `apps/server/.env` as `TELEGRAM_BOT_TOKEN`, then start the server. It long-polls Telegram (no public
    URL needed). In your bot chat, send `/room 123456` (your 6-digit room code) to link the chat.
 3. **Supply the audio:** send `/tracks` to get a numbered list of tracks waiting for audio, then send the
-   bot an audio file (e.g. one you got from another Telegram music bot) **with the track's number as the
-   caption**. The bot uploads it to the room's R2 storage and flips that queue entry to **"Synced ✓"** —
-   playable in tight sync, with its Spotify metadata kept.
+   bot an audio file (e.g. one you got from another Telegram music bot) with a caption that identifies
+   the pending track. Supported caption forms:
+   - track number (`1`, `#1`, `1.`)
+   - Spotify track link/URI for that pending entry
+   - unique title/artist text match
+   The bot uploads it to the room's R2 storage and flips that queue entry to **"Synced ✓"** — playable
+   in tight sync, with its Spotify metadata kept.
 4. An audio file sent **without** a caption is simply appended to the queue as a new synced track.
 
 Files are capped at ~20 MB by Telegram's bot download limit, which covers normal-length songs.
@@ -100,6 +119,12 @@ Files are capped at ~20 MB by Telegram's bot download limit, which covers normal
 cd apps/server && bun test        # server suite (sync, queue, advance, permissions, RTT)
 cd apps/server && bun run type-check
 cd apps/client && bunx tsc --noEmit
+```
+
+Health check:
+
+```bash
+curl http://localhost:8080/health
 ```
 
 ### Trying the sync
