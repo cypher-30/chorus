@@ -61,14 +61,28 @@ const openCacheDb = async (): Promise<IDBDatabase | null> => {
       }
     };
 
+    let blocked = false;
     const db = await new Promise<IDBDatabase | null>((resolve, reject) => {
-      request.onsuccess = () => resolve(request.result);
+      request.onsuccess = () => {
+        if (blocked) {
+          // The other tab released its lock after we'd already given up
+          // and resolved null below; close this connection immediately
+          // instead of leaking one with no versionchange listener, which
+          // would block a future upgrade the same way this one did.
+          request.result.close();
+          return;
+        }
+        resolve(request.result);
+      };
       request.onerror = () => reject(request.error);
       // Another tab has this DB open on an older version and hasn't
       // released it (e.g. a tab still running pre-v2 code). Without this,
       // the open request never settles and every cache read/write on this
       // tab hangs forever instead of falling back to a normal fetch.
-      request.onblocked = () => resolve(null);
+      request.onblocked = () => {
+        blocked = true;
+        resolve(null);
+      };
     });
     // Let another tab's version-bump proceed instead of blocking it the
     // same way: close this connection as soon as one is requested.

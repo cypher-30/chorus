@@ -182,6 +182,7 @@ interface GlobalState extends GlobalStateValues {
   skipToPreviousTrack: () => void;
   getCurrentGainValue: () => number;
   resetStore: () => void;
+  resetQueueForRoomChange: () => void;
   setReconnectionInfo: (info: {
     isReconnecting: boolean;
     currentAttempt: number;
@@ -1570,6 +1571,20 @@ export const useGlobalStore = create<GlobalState>((set, get) => {
 
       initializeAudioExclusively();
     },
+
+    // Zustand's audioSources/queueVersion are module-level state that
+    // outlives React component unmounts, so navigating directly between
+    // two room URLs (never passing through resetStore's landing-page path)
+    // leaves the previous room's queue sitting in the store when the new
+    // room connects. Left unhandled, that causes two separate bugs: the
+    // handleSetAudioSources URL-diff would evict the previous (still-live,
+    // still-other-people's) room's cached audio from IndexedDB, and the
+    // new room's first SET_AUDIO_SOURCES (queueVersion resets to 0 on a
+    // fresh RoomManager) would be dropped by the out-of-order guard as
+    // "stale" against the old room's higher version. WebSocketManager
+    // calls this right before opening a connection to a different roomId.
+    resetQueueForRoomChange: () => set({ audioSources: [], queueVersion: 0 }),
+
     setReconnectionInfo: (info) => set({ reconnectionInfo: info }),
   };
 });

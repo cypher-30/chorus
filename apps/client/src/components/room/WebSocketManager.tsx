@@ -11,7 +11,7 @@ import {
   NTPResponseMessageType,
   WSResponseSchema,
 } from "@chorus/shared";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useWebSocketReconnection } from "@/hooks/useWebSocketReconnection";
 
 // Helper function for NTP response handling
@@ -49,6 +49,10 @@ export const WebSocketManager = ({
   // Room state
   const isLoadingRoom = useRoomStore((state) => state.isLoadingRoom);
   const setUserId = useRoomStore((state) => state.setUserId);
+  // Tracks the last roomId this component actually connected to, so the
+  // room-change queue reset (below) only fires on a genuine room switch,
+  // not on every reconnect/username-change re-run of that effect.
+  const prevRoomIdRef = useRef<string | null>(null);
 
   // WebSocket and audio state
   const setSocket = useGlobalStore((state) => state.setSocket);
@@ -73,6 +77,9 @@ export const WebSocketManager = ({
   );
   const handleSetAudioSources = useGlobalStore(
     (state) => state.handleSetAudioSources
+  );
+  const resetQueueForRoomChange = useGlobalStore(
+    (state) => state.resetQueueForRoomChange
   );
   const lastMessageReceivedTime = useGlobalStore(
     (state) => state.lastMessageReceivedTime
@@ -266,6 +273,15 @@ export const WebSocketManager = ({
     if (socket) {
       return;
     }
+
+    // Global store state (audioSources/queueVersion) outlives this
+    // component's mount cycle, so a direct room-to-room navigation (never
+    // passing through the landing page's resetStore) would otherwise leave
+    // the previous room's queue in place for the new room's connection.
+    if (prevRoomIdRef.current !== null && prevRoomIdRef.current !== roomId) {
+      resetQueueForRoomChange();
+    }
+    prevRoomIdRef.current = roomId;
 
     const ws = createConnection();
 
