@@ -99,24 +99,23 @@ export function AddByLink() {
   };
 
   return (
-    <div className="p-4 bg-neutral-800 rounded-lg w-full max-w-md mx-auto">
+    <div className="flex w-full flex-col gap-3">
       <div className="flex gap-2">
         <Input
           type="text"
           value={link}
           onChange={(e) => setLink(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleResolve()}
-          placeholder="Paste a Spotify track, album, or playlist link..."
-          className="bg-neutral-700 border-neutral-600 text-white"
+          placeholder="Paste a Spotify link"
         />
         <Button onClick={handleResolve} disabled={isResolving || !link.trim()}>
           {isResolving ? "..." : "Find"}
         </Button>
       </div>
       {resolved.length > 0 && (
-        <div className="mt-3 space-y-2">
+        <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-sm text-neutral-300">
+            <span className="text-sm text-muted-foreground">
               Found {resolved.length} track{resolved.length === 1 ? "" : "s"}
               {capped && " (first 100)"}
             </span>
@@ -124,20 +123,20 @@ export function AddByLink() {
               {isAdding ? "Adding..." : "Add to queue"}
             </Button>
           </div>
-          <div className="space-y-1 max-h-40 overflow-y-auto">
+          <div className="flex max-h-40 flex-col gap-1 overflow-y-auto">
             {resolved.map((t) => (
-              <div key={t.uri} className="flex items-center gap-2 p-1.5 bg-neutral-700/60 rounded">
+              <div key={t.uri} className="flex items-center gap-2 rounded-lg bg-secondary p-1.5">
                 {t.artworkUrl && (
-                  <img src={t.artworkUrl} alt={t.title} className="w-8 h-8 flex-shrink-0 rounded-sm" />
+                  <img src={t.artworkUrl} alt={t.title} className="size-8 flex-shrink-0 rounded-sm" />
                 )}
                 <div className="truncate">
-                  <p className="text-sm text-white truncate">{t.title}</p>
-                  <p className="text-xs text-neutral-400 truncate">{t.artist}</p>
+                  <p className="truncate text-sm">{t.title}</p>
+                  <p className="truncate text-xs text-muted-foreground">{t.artist}</p>
                 </div>
               </div>
             ))}
           </div>
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-muted-foreground">
             Tracks are added as “Needs audio” — send the matching file to the Telegram bot to make them playable.
           </p>
         </div>

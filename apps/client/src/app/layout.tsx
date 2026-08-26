@@ -3,23 +3,25 @@ import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
 import { Analytics } from "@vercel/analytics/react";
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Inter } from "next/font/google";
+import { IBM_Plex_Mono, Inter, Space_Grotesk } from "next/font/google";
 import "./globals.css";
 import TQProvider from "@/components/TQProvider";
 import { Providers } from "@/components/Providers";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
 const inter = Inter({
   variable: "--font-inter",
+  subsets: ["latin"],
+});
+
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-display",
+  weight: ["500", "600", "700"],
+  subsets: ["latin"],
+});
+
+const ibmPlexMono = IBM_Plex_Mono({
+  variable: "--font-mono",
+  weight: ["400", "500", "600"],
   subsets: ["latin"],
 });
 
@@ -28,7 +30,12 @@ export const metadata: Metadata = {
   description:
     "Chorus is an open-source, web audio player built for multi-device playback.",
   keywords: ["music", "sync", "audio", "collaboration", "real-time"],
-  authors: [{ name: "Freeman Jiang" }],
+  authors: [{ name: "Chorus" }],
+  icons: {
+    icon: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    shortcut: [{ url: "/icon.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/icon.svg", type: "image/svg+xml" }],
+  },
 };
 
 export default function RootLayout({
@@ -38,9 +45,9 @@ export default function RootLayout({
     <html lang="en">
       <body
         className={cn(
-          geistSans.variable,
-          geistMono.variable,
           inter.variable,
+          spaceGrotesk.variable,
+          ibmPlexMono.variable,
           "antialiased font-sans dark selection:bg-primary-800 selection:text-white"
         )}
       >

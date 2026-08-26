@@ -42,33 +42,39 @@ export function SpotifySearch() {
   };
 
   return (
-    <div className="p-4 bg-neutral-800 rounded-lg w-full max-w-md mx-auto">
+    <div className="flex w-full flex-col gap-3">
       <div className="flex gap-2">
         <Input
           type="text"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && handleSearch()}
-          placeholder="Search for a song to add..."
-          className="bg-neutral-700 border-neutral-600 text-white"
+          placeholder="Search Spotify"
         />
         <Button onClick={handleSearch} disabled={isLoading}>
           {isLoading ? "..." : "Search"}
         </Button>
       </div>
-      <div className="mt-4 space-y-2 max-h-60 overflow-y-auto">
+      <div className="flex max-h-72 flex-col gap-1 overflow-y-auto">
         {searchResults.map((track) => (
-          <div key={track.uri} className="flex items-center justify-between p-2 bg-neutral-700 rounded">
+          <div
+            key={track.uri}
+            className="flex items-center justify-between gap-2 rounded-lg bg-secondary p-2"
+          >
             <div className="flex items-center gap-3 overflow-hidden">
-              <img src={track.album.images[2]?.url || ""} alt={track.name} className="w-10 h-10 flex-shrink-0" />
+              <img
+                src={track.album.images[2]?.url || ""}
+                alt={track.name}
+                className="size-10 flex-shrink-0 rounded-md"
+              />
               <div className="truncate">
-                <p className="font-semibold text-white truncate">{track.name}</p>
-                <p className="text-sm text-neutral-400 truncate">
+                <p className="truncate text-sm font-medium">{track.name}</p>
+                <p className="truncate text-xs text-muted-foreground">
                   {track.artists.map((artist: { name: string }) => artist.name).join(", ")}
                 </p>
               </div>
             </div>
-            <Button onClick={() => addToQueue(track)} size="sm" className="flex-shrink-0 ml-2">
+            <Button onClick={() => addToQueue(track)} size="sm" className="ml-2 flex-shrink-0">
               Add
             </Button>
           </div>

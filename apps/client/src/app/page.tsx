@@ -4,7 +4,6 @@ import { Join } from "@/components/Join";
 import { useGlobalStore } from "@/store/global";
 import { useRoomStore } from "@/store/room";
 import { useEffect } from "react";
-import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 
 export default function Home() {
   const resetGlobalStore = useGlobalStore((state) => state.resetStore);
@@ -21,7 +20,6 @@ export default function Home() {
     <main className="relative flex min-h-screen flex-col items-center justify-center p-4">
       <div className="flex flex-col items-center gap-4">
         <Join />
-        <AnnouncementBanner />
       </div>
     </main>
   );

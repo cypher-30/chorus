@@ -32,9 +32,9 @@ export function DeviceBanner() {
   };
 
   return (
-    <div className="w-full bg-yellow-500/10 border border-yellow-600/40 text-yellow-300 text-xs px-3 py-2 rounded">
+    <div className="w-full rounded-[10px] bg-warn-bg px-3 py-2 text-xs text-warn">
       No active Spotify device. Open Spotify and select &quot;Chorus Web Player&quot; or press Play here and we&apos;ll start when ready.
-      {pending && <span className="ml-2 text-yellow-400">Pending track queued...</span>}
+      {pending && <span className="ml-2">Pending track queued...</span>}
       <button onClick={retry} className="ml-3 underline hover:no-underline">Retry</button>
     </div>
   );

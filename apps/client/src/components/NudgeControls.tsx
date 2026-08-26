@@ -48,10 +48,10 @@ export const NudgeControls: React.FC<NudgeControlsProps> = ({
   };
 
   return (
-    <div className="mt-4 p-4 border rounded max-w-md w-full">
-      <h3 className="font-bold mb-2">Microscopic Timing Controls</h3>
-      <div className="flex items-center justify-between mb-2">
-        <span>Nudge Amount: {nudgeAmount} ms</span>
+    <div className="w-full max-w-md rounded-xl border border-border p-4">
+      <h3 className="mb-2 font-display text-sm font-semibold">Microscopic Timing Controls</h3>
+      <div className="mb-2 flex items-center justify-between text-sm">
+        <span className="font-mono text-muted-foreground">Nudge Amount: {nudgeAmount} ms</span>
         <div className="flex gap-2">
           <Button
             onClick={() =>
@@ -113,7 +113,7 @@ export const NudgeControls: React.FC<NudgeControlsProps> = ({
           Speed Up ▶
         </Button>
       </div>
-      <div className="mt-2 text-center">
+      <div className="mt-2 text-center font-mono text-xs text-muted-foreground">
         Total adjustment: {totalNudge > 0 ? "+" : ""}
         {totalNudge} ms ({(totalNudge / 1000).toFixed(3)} s)
       </div>

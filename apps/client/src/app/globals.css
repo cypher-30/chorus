@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../components/room/scrollbar.css";
 
 @plugin "tailwindcss-animate";
 
@@ -8,15 +9,8 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --font-sans: var(--font-inter);
-  --font-mono: var(--font-geist-mono);
-  --color-sidebar-ring: var(--sidebar-ring);
-  --color-sidebar-border: var(--sidebar-border);
-  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
-  --color-sidebar-accent: var(--sidebar-accent);
-  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
-  --color-sidebar-primary: var(--sidebar-primary);
-  --color-sidebar-foreground: var(--sidebar-foreground);
-  --color-sidebar: var(--sidebar);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
   --color-chart-5: var(--chart-5);
   --color-chart-4: var(--chart-4);
   --color-chart-3: var(--chart-3);
@@ -39,6 +33,10 @@
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
+  --color-sheet: var(--sheet);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-danger-bg: var(--danger-bg);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -50,75 +48,39 @@
   --animate-sound-wave-3: sound-wave-3 1s ease-in-out infinite;
 }
 
+/* Chorus is dark-only — no light theme, no .dark gate needed for these values */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.145 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0);
-  --primary-foreground: oklch(0.985 0 0);
-  --secondary: oklch(0.97 0 0);
-  --secondary-foreground: oklch(0.205 0 0);
-  --muted: oklch(0.97 0 0);
-  --muted-foreground: oklch(0.556 0 0);
-  --accent: oklch(0.97 0 0);
-  --accent-foreground: oklch(0.205 0 0);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.577 0.245 27.325);
-  --border: oklch(0.922 0 0);
-  --input: oklch(0.922 0 0);
-  --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  --background: oklch(13% 0.014 340);
+  --foreground: oklch(96% 0.007 340);
+  --card: oklch(17% 0.016 340);
+  --card-foreground: oklch(96% 0.007 340);
+  --popover: oklch(17% 0.016 340);
+  --popover-foreground: oklch(96% 0.007 340);
+  --primary: oklch(70% 0.2 350);
+  --primary-foreground: oklch(15% 0.06 350);
+  --secondary: oklch(19% 0.017 340);
+  --secondary-foreground: oklch(96% 0.007 340);
+  --muted: oklch(19% 0.017 340);
+  --muted-foreground: oklch(68% 0.024 340);
+  --accent: oklch(21% 0.018 340);
+  --accent-foreground: oklch(96% 0.007 340);
+  --destructive: oklch(72% 0.16 25);
+  --destructive-foreground: oklch(96% 0.007 340);
+  --border: oklch(28% 0.022 340);
+  --input: oklch(28% 0.022 340);
+  --ring: oklch(70% 0.2 350);
+  --chart-1: oklch(64% 0.14 265);
+  --chart-2: oklch(64% 0.13 150);
+  --chart-3: oklch(66% 0.15 300);
+  --chart-4: oklch(68% 0.15 60);
+  --chart-5: oklch(78% 0.13 80);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-primary: oklch(0.205 0 0);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.97 0 0);
-  --sidebar-accent-foreground: oklch(0.205 0 0);
-  --sidebar-border: oklch(0.922 0 0);
-  --sidebar-ring: oklch(0.708 0 0);
-}
 
-.dark {
-  --background: oklch(0.145 0 0);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.145 0 0);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.145 0 0);
-  --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.985 0 0);
-  --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0);
-  --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.396 0.141 25.723);
-  --destructive-foreground: oklch(0.637 0.237 25.331);
-  --border: oklch(0.269 0 0);
-  --input: oklch(0.269 0 0);
-  --ring: oklch(0.439 0 0);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0);
-  --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(0.269 0 0);
-  --sidebar-ring: oklch(0.439 0 0);
+  /* Design-specific tokens, not part of the shadcn set */
+  --sheet: oklch(15% 0.015 340);
+  --warn: oklch(78% 0.13 80);
+  --warn-bg: oklch(26% 0.05 80);
+  --danger-bg: oklch(26% 0.06 25);
 }
 
 @layer base {
@@ -183,20 +145,40 @@
       height: 30%;
     }
   }
+
+  @keyframes pulse-dot {
+    0%,
+    100% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.3;
+    }
+  }
+
+  @keyframes sheet-in {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
+    }
+  }
 }
 
 @theme inline {
-  --font-inter: var(--font-inter);
-  /* https://kyrylo.org/css/2025/02/09/oklch-css-variables-for-tailwind-v4-colors.html */
-  --color-primary-50: oklch(98.19% 0.0181 155.83);
-  --color-primary-100: oklch(96.24% 0.0434 156.74);
-  --color-primary-200: oklch(92.5% 0.0806 155.99);
-  --color-primary-300: oklch(87.12% 0.1363 154.45);
-  --color-primary-400: oklch(80.03% 0.1821 151.71);
-  --color-primary-500: oklch(72.27% 0.192 149.58);
-  --color-primary-600: oklch(62.71% 0.1699 149.21);
-  --color-primary-700: oklch(52.73% 0.1371 150.07);
-  --color-primary-800: oklch(44.79% 0.1083 151.33);
-  --color-primary-900: oklch(39.25% 0.0896 152.54);
-  --color-primary-950: oklch(26.64% 0.0628 152.93);
+  /* https://kyrylo.org/css/2025/02/09/oklch-css-variables-for-tailwind-v4-colors.html
+     Magenta ramp (hue ~350) matching --primary, replacing the previous unrelated
+     green scale. Used directly (e.g. bg-primary-600) by several components. */
+  --color-primary-50: oklch(97.5% 0.015 350);
+  --color-primary-100: oklch(94% 0.035 350);
+  --color-primary-200: oklch(88% 0.065 350);
+  --color-primary-300: oklch(80% 0.1 350);
+  --color-primary-400: oklch(74% 0.14 350);
+  --color-primary-500: oklch(70% 0.2 350);
+  --color-primary-600: oklch(62% 0.19 350);
+  --color-primary-700: oklch(52% 0.16 350);
+  --color-primary-800: oklch(42% 0.13 350);
+  --color-primary-900: oklch(32% 0.1 350);
+  --color-primary-950: oklch(22% 0.07 350);
 }

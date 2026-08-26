@@ -17,15 +17,26 @@ interface SyncProgressProps {
 const OuterModal = ({ children }: { children: React.ReactNode }) => {
   return (
     <motion.div
-      className="fixed inset-0 flex flex-col items-center justify-center z-50 bg-neutral-950 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.3 }}
     >
-      <div className="w-full max-w-md px-1">{children}</div>
+      <div className="w-full max-w-[340px] px-1">{children}</div>
     </motion.div>
   );
 };
+
+const Panel = ({ children }: { children: React.ReactNode }) => (
+  <motion.div
+    className="flex flex-col items-center justify-center rounded-2xl border border-border bg-card px-7 py-8 text-center"
+    initial={{ opacity: 0, y: 5 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.3, ease: "easeOut" }}
+  >
+    {children}
+  </motion.div>
+);
 
 export const SyncProgress = ({
   isLoading = false,
@@ -65,7 +76,7 @@ export const SyncProgress = ({
     }
 
     // In syncing phase, scale progress from 20% to 100%
-    setMessage("Synchronizing time...");
+    setMessage("Measuring offset against the room server");
 
     // If sync is complete, set to 100%
     if (isSyncComplete) {
@@ -90,26 +101,14 @@ export const SyncProgress = ({
   if (hasReconnectionFailed) {
     return (
       <OuterModal>
-        <motion.div
-          className="flex flex-col items-center justify-center p-6 bg-neutral-900 rounded-md border border-neutral-800 shadow-lg"
-          initial={{ opacity: 0, y: 5 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
-        >
+        <Panel>
           <motion.div
-            className="size-6 flex items-center justify-center mb-2"
+            className="mb-4 flex size-12 items-center justify-center rounded-full bg-danger-bg text-destructive"
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.3, delay: 0.1 }}
           >
-            <svg
-              width="100%"
-              height="100%"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              className="text-white"
-            >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
               <motion.path
                 d="M6 6L18 18M18 6L6 18"
                 stroke="currentColor"
@@ -123,16 +122,16 @@ export const SyncProgress = ({
           </motion.div>
 
           <motion.h2
-            className="text-base font-medium tracking-tight mb-1 text-white"
+            className="mb-1.5 font-display text-[17px] font-semibold"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3, delay: 0.2 }}
           >
-            Failed to reconnect
+            Couldn&apos;t reconnect
           </motion.h2>
 
           <motion.p
-            className="text-neutral-400 mb-5 text-center text-sm"
+            className="mb-5 text-center text-[13px] text-muted-foreground"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3, delay: 0.25 }}
@@ -143,26 +142,24 @@ export const SyncProgress = ({
 
           <motion.a
             href="/"
-            className="mt-4 px-5 py-2 bg-primary text-primary-foreground rounded-full font-medium text-xs tracking-wide cursor-pointer w-full hover:shadow-lg hover:shadow-zinc-50/50 transition-shadow duration-500 text-center"
+            className="w-full rounded-full bg-primary px-5 py-2.5 text-center text-sm font-semibold text-primary-foreground"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            whileHover={{
-              scale: 1.015,
-            }}
+            whileHover={{ scale: 1.015 }}
             transition={{ duration: 0.3 }}
           >
-            Go to home
+            Retry
           </motion.a>
 
           <motion.p
-            className="text-neutral-500 mt-4.5 text-center text-xs"
+            className="mt-4 text-center text-xs text-muted-foreground"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3, delay: 0.3 }}
           >
-            Please check your connection and try again
+            Check your connection and try again
           </motion.p>
-        </motion.div>
+        </Panel>
       </OuterModal>
     );
   }
@@ -171,26 +168,14 @@ export const SyncProgress = ({
   if (reconnectionInfo.isReconnecting) {
     return (
       <OuterModal>
-        <motion.div
-          className="flex flex-col items-center justify-center p-6 bg-neutral-900 rounded-md border border-neutral-800 shadow-lg"
-          initial={{ opacity: 0, y: 5 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
-        >
+        <Panel>
           <motion.div
-            className="size-12 flex items-center justify-center mb-2"
+            className="mb-4 flex size-12 items-center justify-center"
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.3, delay: 0.1 }}
           >
-            <svg
-              width="100%"
-              height="100%"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              className="text-primary"
-            >
+            <svg width="100%" height="100%" viewBox="0 0 24 24" fill="none" className="text-primary">
               <motion.circle
                 cx="6"
                 cy="12"
@@ -219,16 +204,16 @@ export const SyncProgress = ({
           </motion.div>
 
           <motion.h2
-            className="text-base font-medium tracking-tight mb-1 text-white"
+            className="mb-1.5 font-display text-[17px] font-semibold"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3, delay: 0.2 }}
           >
-            {"Reconnecting..."}
+            Reconnecting…
           </motion.h2>
 
           <motion.p
-            className="text-neutral-400 mb-5 text-center text-sm"
+            className="mb-5 text-center text-[13px] text-muted-foreground"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3, delay: 0.25 }}
@@ -238,7 +223,7 @@ export const SyncProgress = ({
           </motion.p>
 
           <motion.p
-            className="text-neutral-500 mt-4.5 text-center text-xs"
+            className="text-center text-xs text-muted-foreground"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3, delay: 0.3 }}
@@ -250,13 +235,13 @@ export const SyncProgress = ({
               href={SOCIAL_LINKS.discord}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-primary/75 underline"
+              className="text-primary underline"
             >
               Discord
             </a>
             .
           </motion.p>
-        </motion.div>
+        </Panel>
       </OuterModal>
     );
   }
@@ -269,26 +254,14 @@ export const SyncProgress = ({
 
     return (
       <OuterModal>
-        <motion.div
-          className="flex flex-col items-center justify-center p-6 bg-neutral-900 rounded-md border border-neutral-800 shadow-lg"
-          initial={{ opacity: 0, y: 5 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, ease: "easeOut" }}
-        >
+        <Panel>
           <motion.div
-            className="w-12 h-12 flex items-center justify-center mb-3"
+            className="mb-3 flex size-12 items-center justify-center rounded-full bg-primary/15 text-primary"
             initial={{ scale: 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.3, delay: 0.1 }}
           >
-            <svg
-              width="20"
-              height="20"
-              viewBox="0 0 24 24"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              className="text-primary"
-            >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
               <motion.path
                 d="M20 6L9 17L4 12"
                 stroke="currentColor"
@@ -303,16 +276,16 @@ export const SyncProgress = ({
           </motion.div>
 
           <motion.h2
-            className="text-base font-medium tracking-tight mb-1 text-white"
+            className="mb-1.5 font-display text-[17px] font-semibold"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3, delay: 0.2 }}
           >
-            Synchronization Complete
+            Sync complete
           </motion.h2>
 
           <motion.p
-            className="text-neutral-400 mb-5 text-center text-sm"
+            className="mb-5 text-center text-[13px] text-muted-foreground"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3, delay: 0.25 }}
@@ -321,12 +294,10 @@ export const SyncProgress = ({
           </motion.p>
 
           <motion.button
-            className="mt-4 px-5 py-2 bg-primary text-primary-foreground rounded-full font-medium text-xs tracking-wide cursor-pointer w-full hover:shadow-lg hover:shadow-zinc-50/50 transition-shadow duration-500"
+            className="w-full rounded-full bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            whileHover={{
-              scale: 1.015,
-            }}
+            whileHover={{ scale: 1.015 }}
             transition={{ duration: 0.3 }}
             onClick={() => setIsInitingSystem(false)}
           >
@@ -334,37 +305,31 @@ export const SyncProgress = ({
           </motion.button>
 
           <motion.p
-            className="text-neutral-500 mt-4.5 text-center text-xs"
+            className="mt-4 text-center text-xs text-muted-foreground"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ duration: 0.3, delay: 0.3 }}
           >
             Use native device speakers.
           </motion.p>
-        </motion.div>
+        </Panel>
       </OuterModal>
     );
   }
 
   return (
     <OuterModal>
-      <motion.div
-        className="flex flex-col items-center justify-center p-6 bg-neutral-900 rounded-md border border-neutral-800 shadow-lg"
-        initial={{ opacity: 0, y: 5 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
-      >
-        <div className="w-14 h-14 mb-3 relative">
-          <svg className="w-full h-full" viewBox="0 0 100 100">
+      <Panel>
+        <div className="relative mb-3 size-[88px]">
+          <svg className="size-full" viewBox="0 0 100 100">
             {/* Background circle */}
             <circle
               cx="50"
               cy="50"
               r="42"
               fill="none"
-              stroke="currentColor"
+              stroke="var(--border)"
               strokeWidth="6"
-              className="text-neutral-800"
             />
 
             {/* Progress circle */}
@@ -373,10 +338,9 @@ export const SyncProgress = ({
               cy="50"
               r="42"
               fill="none"
-              stroke="currentColor"
+              stroke="var(--primary)"
               strokeWidth="6"
               strokeLinecap="round"
-              className="text-white"
               strokeDasharray={2 * Math.PI * 42}
               initial={{
                 pathLength: 0,
@@ -395,7 +359,7 @@ export const SyncProgress = ({
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
             <motion.div
-              className="text-xs font-medium text-white"
+              className="font-mono text-base font-medium"
               key={Math.round(normalizedProgress * 100)}
               initial={{ opacity: 0.8 }}
               animate={{ opacity: 1 }}
@@ -407,16 +371,16 @@ export const SyncProgress = ({
         </div>
 
         <motion.h2
-          className="text-base font-medium tracking-tight mb-1 text-white"
+          className="mb-1.5 font-display text-[17px] font-semibold"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.1 }}
         >
-          Beatsync calibrating
+          Calibrating clocks
         </motion.h2>
 
         <motion.p
-          className="text-neutral-400 mb-5 text-center text-xs"
+          className="mb-5 text-center text-[13px] text-muted-foreground"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.15 }}
@@ -425,15 +389,15 @@ export const SyncProgress = ({
         </motion.p>
 
         {/* Progress bar */}
-        <div className="w-full h-[4px] bg-neutral-800 rounded-full overflow-hidden mt-4 mb-2">
+        <div className="mt-1 h-[3px] w-full overflow-hidden rounded-full bg-muted">
           <motion.div
-            className="h-full bg-neutral-300"
+            className="h-full bg-primary"
             initial={{ width: "0%" }}
             animate={{ width: `${normalizedProgress * 100}%` }}
             transition={{ duration: 0.5, ease: "easeOut" }}
           />
         </div>
-      </motion.div>
+      </Panel>
     </OuterModal>
   );
 };

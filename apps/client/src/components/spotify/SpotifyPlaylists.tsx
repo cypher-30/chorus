@@ -151,18 +151,18 @@ export function SpotifyPlaylists() {
 
   return (
     <div className="space-y-2">
-      <div className="text-xs text-neutral-400">Your Playlists</div>
+      <div className="text-xs text-muted-foreground">Your Playlists</div>
       {playlists.length === 0 && (
-        <div className="text-xs text-neutral-500">No playlists found</div>
+        <div className="text-xs text-muted-foreground">No playlists found</div>
       )}
       {playlists.map((p) => (
-        <div key={p.id} className="bg-neutral-800/30 rounded-md p-2">
+        <div key={p.id} className="rounded-lg bg-secondary p-2">
           <div className="flex items-center gap-2">
-            {p.images?.[2]?.url && <img src={p.images[2].url} className="w-8 h-8" alt={p.name} />}
+            {p.images?.[2]?.url && <img src={p.images[2].url} className="size-8 rounded-md" alt={p.name} />}
             <div className="text-sm flex-1">
               {p.name}
               {progress[p.id] && (
-                <div className="text-[10px] text-neutral-400">
+                <div className="text-[10px] text-muted-foreground">
                   {progress[p.id].added}/{progress[p.id].total} added • {progress[p.id].skipped} skipped •{" "}
                   {progress[p.id].failed} failed
                 </div>
@@ -179,12 +179,12 @@ export function SpotifyPlaylists() {
             </Button>
           </div>
           {failedTracks[p.id]?.length ? (
-            <div className="flex items-center justify-between mt-2 text-[11px] text-red-300">
+            <div className="flex items-center justify-between mt-2 text-[11px] text-destructive">
               <span>{failedTracks[p.id].length} tracks failed</span>
               <Button
                 size="sm"
                 variant="ghost"
-                className="text-red-200 hover:text-white"
+                className="text-destructive hover:text-foreground"
                 onClick={() => retryFailed(p.id, p.name)}
               >
                 Retry failed

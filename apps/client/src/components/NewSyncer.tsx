@@ -3,7 +3,7 @@ import { generateName } from "@/lib/randomNames";
 import { useRoomStore } from "@/store/room";
 import { motion } from "motion/react";
 import { useEffect } from "react";
-import { Dashboard } from "./dashboard/Dashboard";
+import { RoomShell } from "./room/RoomShell";
 import { WebSocketManager } from "./room/WebSocketManager";
 
 interface NewSyncerProps {
@@ -29,7 +29,7 @@ export const NewSyncer = ({ roomId }: NewSyncerProps) => {
       transition={{ duration: 0.5 }}
     >
       <WebSocketManager roomId={roomId} username={username} />
-      <Dashboard roomId={roomId} />
+      <RoomShell roomId={roomId} />
     </motion.div>
   );
 };

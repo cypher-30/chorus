@@ -14,16 +14,15 @@ export function AuthButtons() {
   if (session) {
     // This is the view for when the user is signed in
     return (
-      <div className="flex w-full flex-col items-center gap-2">
-        <p className="text-sm text-neutral-400">
-          Signed in as{" "}
-          <span className="font-medium text-primary">
-            {session.user?.name}
-          </span>
-        </p>
+      <div className="flex w-full items-center justify-between gap-2 rounded-full bg-secondary px-3 py-1.5 text-sm">
+        <span className="truncate text-muted-foreground">
+          Signed in as <span className="font-medium text-foreground">{session.user?.name}</span>
+        </span>
         <Button
           onClick={() => signOut()}
-          className="w-full px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-full font-medium text-sm cursor-pointer transition-all duration-300 flex items-center justify-center"
+          size="sm"
+          variant="destructive"
+          className="flex-shrink-0 rounded-full"
         >
           Sign out
         </Button>
@@ -35,9 +34,9 @@ export function AuthButtons() {
   return (
     <Button
       onClick={() => signIn("spotify")}
-      className="w-full px-4 py-2 bg-neutral-800 hover:bg-neutral-700 text-white rounded-full font-medium text-sm cursor-pointer transition-all duration-300 flex items-center justify-center"
+      className="flex w-full items-center justify-center rounded-full"
     >
-      <FaSpotify size={16} className="mr-2" />
+      <FaSpotify size={16} />
       <span>Sign in with Spotify</span>
     </Button>
   );
