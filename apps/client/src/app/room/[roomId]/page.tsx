@@ -1,5 +1,4 @@
-import { NewSyncer } from "@/components/NewSyncer";
-import { SpotifyPlayer } from "@/components/SpotifyPlayer";
+import { RoomClientShell } from "@/components/room/RoomClientShell";
 import { validateFullRoomId } from "@/lib/room";
 import React from "react";
 
@@ -25,8 +24,7 @@ export default async function Page({
 
   return (
     <>
-      <SpotifyPlayer />
-      <NewSyncer roomId={roomId} />
+      <RoomClientShell roomId={roomId} />
     </>
   );
 }
