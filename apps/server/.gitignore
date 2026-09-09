@@ -32,6 +32,10 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+# .env.test is tracked deliberately: it keeps `bun test` hermetic (forces
+# in-memory DB + scratch storage dir + yt-dlp auto-fetch off) regardless of
+# what the real .env has locally. Contains no secrets.
+!.env.test
 
 # vercel
 .vercel
