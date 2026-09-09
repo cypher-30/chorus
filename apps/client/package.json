@@ -4,9 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:network": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "test": "bun test",
+    "type-check": "tsc --noEmit"
   },
   "dependencies": {
     "@chorus/shared": "workspace:*",
@@ -49,6 +52,11 @@
     "tailwindcss": "^4",
     "eslint": "^9",
     "eslint-config-next": "15.2.1",
-    "@eslint/eslintrc": "^3"
+    "@eslint/eslintrc": "^3",
+    "@happy-dom/global-registrator": "^15",
+    "@testing-library/react": "^16",
+    "@testing-library/dom": "^10",
+    "@testing-library/user-event": "^14",
+    "@types/bun": "latest"
   }
 }
