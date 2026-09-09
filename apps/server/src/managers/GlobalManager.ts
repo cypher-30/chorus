@@ -156,5 +156,25 @@ export class GlobalManager {
   }
 }
 
-// Export singleton instance
-export const globalManager = new GlobalManager();
+// Export singleton instance.
+//
+// Stashed on `globalThis` rather than a bare module-scope `const` because
+// `bun run --hot` (used by `apps/server`'s `dev` script) re-evaluates
+// changed modules in place on every save. A bare module-scope singleton
+// would silently get replaced by a fresh, empty instance on each reload —
+// while already-open WebSocket connections (owned by Bun's `Bun.serve`
+// runtime, not by this module) survive untouched — producing zombie
+// connections whose room lookups (e.g. `POST /ingest/retry`) 404 with
+// "Room not found" until the process is fully restarted. Confirmed by
+// reproduction (2026-09-09): touching a server file made `/active-rooms`
+// drop to zero rooms while a still-open socket's room session kept
+// running. `globalThis` survives module re-evaluation, so the room map
+// (and its clients/queues/playback state) now survives hot reloads too.
+const GLOBAL_MANAGER_KEY = Symbol.for("chorus.globalManager");
+type GlobalThisWithManager = typeof globalThis & {
+  [GLOBAL_MANAGER_KEY]?: GlobalManager;
+};
+
+export const globalManager: GlobalManager = ((globalThis as GlobalThisWithManager)[
+  GLOBAL_MANAGER_KEY
+] ??= new GlobalManager());
