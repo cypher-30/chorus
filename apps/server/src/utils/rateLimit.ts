@@ -75,7 +75,7 @@ export const getRequestIp = (
   // client — prefer it over headers. Without it (e.g. no `server` passed),
   // every client falls into the same "unknown" bucket, which turns a
   // per-client rate limit into a room-wide one.
-  const socketAddress = server?.requestIP(req)?.address;
+  const socketAddress = server?.requestIP?.(req)?.address;
   if (socketAddress) return socketAddress;
 
   // Fall back to proxy headers for deployments that terminate TLS in front

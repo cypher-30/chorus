@@ -4,6 +4,9 @@
 .env.local
 tmp/
 
+# live credential — never commit (see CLAUDE.md / docs/local-multidevice.md)
+youtube-cookies.txt
+
 # Add .turbo to your .gitignore file. The turbo CLI uses these folders for persisting logs, outputs, and other functionality.
 .turbo
 node_modules
