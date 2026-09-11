@@ -12,7 +12,7 @@ export const corsHeaders = {
 export const jsonResponse = (data: any, status = 200) =>
   new Response(JSON.stringify(data), {
     status,
-    headers: corsHeaders,
+    headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
 export const errorResponse = (message: string, status = 400) =>
