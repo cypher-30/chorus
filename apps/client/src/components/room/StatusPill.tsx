@@ -39,7 +39,7 @@ export const useRoomStatus = (): RoomStatus => {
   if (!isSynced) {
     return { tone: "warn", label: "Syncing clock" };
   }
-  if (Math.abs(lastDriftMs) > 75) {
+  if (isPlaying && Math.abs(lastDriftMs) > 75) {
     return { tone: "error", label: "Resyncing" };
   }
   if (isPlaying) {
