@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-const QUERY = "(min-width: 980px)";
+const QUERY = "(min-width: 820px)";
 
 /**
  * SSR-safe breakpoint hook. Defaults to `false` (mobile) on the server and
