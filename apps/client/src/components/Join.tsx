@@ -19,6 +19,7 @@ import { FaDiscord, FaGithub } from "react-icons/fa";
 import { SOCIAL_LINKS } from "@/constants";
 import { useQuery } from "@tanstack/react-query";
 import { fetchActiveRooms } from "@/lib/api";
+import { getApiBaseUrl } from "@/lib/serverUrl";
 import { AuthButtons } from "./AuthButtons";
 import { Logo } from "./room/RoomHeader";
 
@@ -89,7 +90,7 @@ export const Join = () => {
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
         const res = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/room-exists?roomId=${newRoomId}`
+          `${getApiBaseUrl()}/room-exists?roomId=${newRoomId}`
         );
         if (!res.ok) break;
         const { exists } = await res.json();
