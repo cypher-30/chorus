@@ -19,19 +19,34 @@ export const isPrivateIPv4 = (ip) =>
   ip.startsWith("192.168.") ||
   /^172\.(1[6-9]|2\d|3[0-1])\./.test(ip);
 
+// Auto-configuration/link-local range, 169.254.0.0/16 — the address an
+// adapter self-assigns when it can't reach a DHCP server (e.g. Tailscale
+// reporting an address here means Tailscale is installed but not actually
+// connected). Never worth advertising as a reachable address to another
+// device.
+export const isLinkLocalIPv4 = (ip) => /^169\.254\./.test(ip);
+
 // Adapter names that are virtual/VPN/tunnel interfaces, not the physical
 // network the phone/laptop are actually on — even though their addresses
 // can fall in a private range and pass isPrivateIPv4. Observed on this
 // machine: a VPN client's "ProTUN" adapter handing out a 10.x address
 // alongside the real Wi-Fi adapter's 192.168.x address; naively taking the
 // first private-range match picked the unreachable VPN address instead.
+// Also matches Windows' WSL vEthernet adapter (172.x) — an address that is
+// "locally assigned" from a Windows Bun binary's point of view but reaches
+// nothing outside this machine (see the getLanIPv4 fallback below; this was
+// a real observed failure, not a hypothetical one).
 export const isLikelyVirtualAdapterName = (name) =>
   /(tailscale|protun|vpn|tun\d*|tap\d*|ppp|virtual|hyper-?v|vethernet|wsl)/i.test(
     name
   );
 
-export const getExternalIPv4Entries = () => {
-  const interfaces = os.networkInterfaces();
+// All exported helpers below accept an optional `interfaces` map (the same
+// shape as os.networkInterfaces()) so callers — notably tests — can inject
+// a fixed adapter list instead of depending on the machine's real network
+// state. Defaults to the live OS state for normal (non-test) callers.
+
+export const getExternalIPv4Entries = (interfaces = os.networkInterfaces()) => {
   const entries = [];
 
   Object.entries(interfaces).forEach(([name, ifaceEntries]) => {
@@ -45,28 +60,30 @@ export const getExternalIPv4Entries = () => {
   return entries;
 };
 
-export const getExternalIPv4s = () =>
-  getExternalIPv4Entries().map((e) => e.address);
+export const getExternalIPv4s = (interfaces = os.networkInterfaces()) =>
+  getExternalIPv4Entries(interfaces).map((e) => e.address);
 
-export const getLanIPv4 = () => {
-  const entries = getExternalIPv4Entries();
+export const getLanIPv4 = (interfaces = os.networkInterfaces()) => {
+  const entries = getExternalIPv4Entries(interfaces);
 
-  // Prefer a private-range address on an adapter that doesn't look like a
-  // VPN/tunnel/virtual interface (real Wi-Fi/Ethernet), then fall back to
-  // any private-range address, excluding Tailscale's CGNAT range either way
-  // — that has its own dedicated getTailscaleIPv4() path.
-  const preferred = entries.find(
+  // A private-range address on an adapter that doesn't look like a
+  // VPN/tunnel/virtual interface (real Wi-Fi/Ethernet), excluding
+  // Tailscale's CGNAT range — that has its own dedicated getTailscaleIPv4()
+  // path. Deliberately no permissive fallback that drops the
+  // isLikelyVirtualAdapterName exclusion: on a machine with Wi-Fi down, the
+  // only remaining private-range candidate can be a WSL vEthernet address —
+  // reachable only from this machine, never from another device on the
+  // network — which would defeat the entire purpose of this function (a
+  // real, observed failure; see PLAN.md). Returning null here is correct:
+  // it lets the caller's fail-loud CHORUS_HOST_IP path fire instead of
+  // silently booting onto an unreachable address.
+  const match = entries.find(
     (e) =>
       isPrivateIPv4(e.address) &&
       !isTailscaleIPv4(e.address) &&
       !isLikelyVirtualAdapterName(e.name)
   );
-  if (preferred) return preferred.address;
-
-  const fallback = entries.find(
-    (e) => isPrivateIPv4(e.address) && !isTailscaleIPv4(e.address)
-  );
-  return fallback?.address || null;
+  return match?.address || null;
 };
 
 export const getTailscaleIPv4 = () => {
@@ -101,8 +118,8 @@ export const getTailscaleIPv4 = () => {
  * that script also handles. Returns `{ address, mode }` where `mode` is
  * "lan" | "tailscale" | null (nothing detected).
  */
-export const resolveAutoHostAddress = () => {
-  const lanIp = getLanIPv4();
+export const resolveAutoHostAddress = (interfaces = os.networkInterfaces()) => {
+  const lanIp = getLanIPv4(interfaces);
   if (lanIp) return { address: lanIp, mode: "lan" };
 
   const tailscaleIp = getTailscaleIPv4();

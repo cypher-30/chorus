@@ -2,11 +2,17 @@
   "name": "chorus",
   "packageManager": "bun@1.2.2",
   "scripts": {
-    "build": "turbo run build",
-    "dev": "turbo run dev",
-    "start": "turbo run start",
-    "server": "turbo start --filter=server",
-    "client": "turbo start --filter=client"
+    "build": "bunx --bun turbo run build",
+    "dev": "bunx --bun turbo run dev",
+    "up": "bun run scripts/dev-multidevice.mjs auto",
+    "dev:multidevice": "bun run scripts/dev-multidevice.mjs auto",
+    "dev:lan": "bun run scripts/dev-multidevice.mjs lan",
+    "dev:tailscale": "bun run scripts/dev-multidevice.mjs tailscale",
+    "storage:cleanup": "bun run --cwd apps/server storage:cleanup",
+    "start": "bunx --bun turbo run start",
+    "server": "bunx --bun turbo start --filter=server",
+    "client": "bunx --bun turbo start --filter=client",
+    "verify:3-device": "bun run scripts/verify-3-device-preflight.mjs"
   },
   "workspaces": [
     "apps/*",

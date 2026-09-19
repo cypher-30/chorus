@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "dev:network": "next dev -H 0.0.0.0 -p 3000",
-    "build": "next build",
-    "start": "next start",
-    "lint": "next lint",
+    "dev": "bun run scripts/run-next.mjs dev",
+    "dev:network": "bun run scripts/run-next.mjs dev -H 0.0.0.0 -p 3000",
+    "build": "bun run scripts/run-next.mjs build",
+    "start": "bun run scripts/run-next.mjs start",
+    "lint": "bun run scripts/run-next.mjs lint",
     "test": "bun test",
     "type-check": "tsc --noEmit"
   },

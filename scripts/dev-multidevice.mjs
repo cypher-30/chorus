@@ -6,6 +6,7 @@ import {
   getExternalIPv4s,
   getLanIPv4,
   getTailscaleIPv4,
+  isLinkLocalIPv4,
   isPrivateIPv4,
   isTailscaleIPv4,
 } from "./lib/hostIp.mjs";
@@ -198,7 +199,13 @@ if (!authOriginIsSecure) {
 // apps/client/src/lib/serverUrl.ts), so print every address this machine
 // answers on. Any of these should work for a device that can reach it.
 {
-  const otherAddresses = new Set(getExternalIPv4s());
+  // Link-local (169.254.x.x) addresses are excluded: an adapter reports one
+  // when it self-assigned because it couldn't reach a DHCP/peer server
+  // (e.g. Tailscale installed but not actually connected) — never a
+  // reachable address for another device, so advertising it is misleading.
+  const otherAddresses = new Set(
+    getExternalIPv4s().filter((ip) => !isLinkLocalIPv4(ip))
+  );
   otherAddresses.delete(hostIp);
   otherAddresses.add("127.0.0.1"); // this device only
 
@@ -220,6 +227,109 @@ if (!authOriginIsSecure) {
 console.log("\nUse Ctrl+C once to stop both processes.\n");
 
 let serverExitCode = null;
+let shuttingDown = false;
+
+// This script's process is a native Windows binary here (bun.exe run
+// through WSL interop — see CLAUDE.md), so its own spawned children are
+// real Windows processes, and `taskkill`/`netstat` are the right tools to
+// inspect and reap them. process.platform reports "win32" for that case
+// regardless of the WSL shell wrapping it.
+const isWindowsRuntime = process.platform === "win32";
+
+// Finds the PID currently LISTENING on `port`, so a conflict message can
+// name it instead of guessing at a shell-specific kill command. Best
+// effort: returns null (never throws) if the lookup tool isn't available
+// or nothing is found — callers must degrade gracefully.
+const findPortHolder = (port) => {
+  if (isWindowsRuntime) {
+    let result;
+    try {
+      result = Bun.spawnSync({
+        cmd: ["netstat.exe", "-ano"],
+        stdout: "pipe",
+        stderr: "ignore",
+      });
+    } catch {
+      return null;
+    }
+    if (result.exitCode !== 0) return null;
+
+    const output = new TextDecoder().decode(result.stdout);
+    for (const rawLine of output.split(/\r?\n/)) {
+      const columns = rawLine.trim().split(/\s+/);
+      if (columns.length < 5) continue;
+      const [proto, localAddress, , state, pid] = columns;
+      if (proto !== "TCP") continue;
+      if (state !== "LISTENING") continue;
+      if (!localAddress.endsWith(`:${port}`)) continue;
+      const parsedPid = Number(pid);
+      if (Number.isFinite(parsedPid) && parsedPid > 0) return parsedPid;
+    }
+    return null;
+  }
+
+  // POSIX best effort — lsof isn't guaranteed to be installed everywhere,
+  // so a failure here just means the caller falls back to generic guidance.
+  try {
+    const result = Bun.spawnSync({
+      cmd: ["lsof", "-t", `-i:${port}`, "-sTCP:LISTEN"],
+      stdout: "pipe",
+      stderr: "ignore",
+    });
+    if (result.exitCode !== 0) return null;
+    const first = new TextDecoder()
+      .decode(result.stdout)
+      .trim()
+      .split(/\r?\n/)[0];
+    const parsedPid = Number(first);
+    return Number.isFinite(parsedPid) && parsedPid > 0 ? parsedPid : null;
+  } catch {
+    return null;
+  }
+};
+
+const suggestKillCommand = (pid) =>
+  isWindowsRuntime ? `taskkill.exe /PID ${pid} /T /F` : `kill -9 ${pid}`;
+
+const describePortConflict = (port) => {
+  const pid = findPortHolder(port);
+  if (pid) {
+    return `Port ${port} is held by PID ${pid}. Stop it, then retry: ${suggestKillCommand(pid)}`;
+  }
+  return isWindowsRuntime
+    ? `Port ${port} is already in use. Find it with \`netstat -ano | findstr :${port}\`, then \`taskkill /PID <pid> /T /F\`, then retry.`
+    : `Port ${port} is already in use. Stop whatever holds it, then retry: bun run up`;
+};
+
+// Reaps a spawned process AND its descendants. A plain proc.kill() only
+// signals the immediate child — observed on this machine, that leaves
+// Next's own internal process tree (next dev spawns a separate
+// start-server.js child) running and holding the port after "shutdown"
+// (see PLAN.md's process-tree finding). `taskkill /T` walks the real
+// Windows parent-child chain regardless of whether the intermediate
+// wrappers handle signals gracefully.
+const killTree = (proc) => {
+  if (!proc) return;
+
+  if (isWindowsRuntime && proc.pid) {
+    try {
+      Bun.spawnSync({
+        cmd: ["taskkill.exe", "/PID", String(proc.pid), "/T", "/F"],
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+      return;
+    } catch {
+      // fall through to a plain kill below
+    }
+  }
+
+  try {
+    proc.kill();
+  } catch {
+    // ignore — already gone
+  }
+};
 
 const waitForServerHealth = async () => {
   const deadline = Date.now() + HEALTHCHECK_TIMEOUT_MS;
@@ -290,6 +400,8 @@ const warmUpNextAuthProviders = async () => {
   const candidates = getAuthWarmupCandidates();
 
   while (Date.now() < deadline) {
+    if (shuttingDown) return;
+
     for (const authUrl of candidates) {
       try {
         const response = await fetch(authUrl, {
@@ -307,9 +419,14 @@ const warmUpNextAuthProviders = async () => {
     await Bun.sleep(AUTH_WARMUP_POLL_MS);
   }
 
-  console.warn(
-    `Auth route warm-up timed out after ${AUTH_WARMUP_TIMEOUT_MS / 1000}s. First sign-in/session check may be slower.`
-  );
+  // Informational, not an error: this only means the *first* Spotify
+  // sign-in/session check after startup may take a beat longer while
+  // Next.js compiles the auth route on demand. Nothing is broken.
+  if (!shuttingDown) {
+    console.log(
+      `(Auth route warm-up didn't finish within ${AUTH_WARMUP_TIMEOUT_MS / 1000}s — non-fatal, the app still starts normally. First sign-in check may just be a little slower.)`
+    );
+  }
 };
 
 const serverPortFree = await isPortFree(8080);
@@ -318,8 +435,7 @@ const serverAlreadyRunning = !serverPortFree && (await isChorusHealthOk());
 
 if (!serverPortFree && !serverAlreadyRunning) {
   console.error("Port 8080 is already in use by a non-Chorus process.");
-  console.error("Stop the existing process first, then retry with: bun run up");
-  console.error("If needed in WSL, run: pkill -f 'src/index.ts'");
+  console.error(describePortConflict(8080));
   process.exit(1);
 }
 
@@ -331,8 +447,7 @@ if (!clientPortFree && serverAlreadyRunning) {
 
 if (!clientPortFree) {
   console.error("Port 3000 is already in use by another process.");
-  console.error("Stop the existing process first, then retry with: bun run up");
-  console.error("If needed in WSL, run: pkill -f 'next dev'");
+  console.error(describePortConflict(3000));
   process.exit(1);
 }
 
@@ -352,6 +467,16 @@ if (!serverAlreadyRunning) {
   });
 }
 
+let client;
+
+// Defined before the client is spawned so an early-exit failure path below
+// (the re-probe) can clean up the already-started server too.
+const stopAll = () => {
+  shuttingDown = true;
+  killTree(server);
+  killTree(client);
+};
+
 if (serverAlreadyRunning) {
   console.log("Detected existing Chorus server on port 8080. Reusing it.");
 } else {
@@ -360,18 +485,26 @@ if (serverAlreadyRunning) {
     await waitForServerHealth();
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
-    try {
-      server.kill();
-    } catch {
-      // ignore
-    }
+    killTree(server);
     process.exit(1);
   }
 
   console.log("Server is healthy. Launching client...\n");
 }
 
-let client;
+// Re-probe immediately before spawning the client. This narrows, but
+// cannot fully close, the race in PLAN.md's finding: a stale process can be
+// alive-but-not-yet-bound at the earlier pre-flight check above, then bind
+// during the health-check wait that just ran (observed gap on this
+// machine: ~7s between such a process starting and it actually binding the
+// port). Catching it here — instead of letting the client crash with a raw
+// Next.js EADDRINUSE stack trace — means the actual holder can be named.
+if (!(await isPortFree(3000))) {
+  console.error("\nPort 3000 became occupied while the server was starting.");
+  console.error(describePortConflict(3000));
+  killTree(server);
+  process.exit(1);
+}
 
 client = Bun.spawn({
   cmd: [bunBin, "run", "dev:network"],
@@ -389,20 +522,6 @@ client = Bun.spawn({
 });
 
 void warmUpNextAuthProviders();
-
-const safeKill = (proc) => {
-  if (!proc) return;
-  try {
-    proc.kill();
-  } catch {
-    // ignore
-  }
-};
-
-const stopAll = () => {
-  safeKill(server);
-  safeKill(client);
-};
 
 process.on("SIGINT", () => {
   console.log("\nStopping Chorus multi-device mode...");
@@ -426,6 +545,16 @@ const firstExit = server
 
 if (firstExit.code !== 0) {
   console.error(`${firstExit.name} exited with code ${firstExit.code}`);
+
+  // Handle EADDRINUSE at the point of failure rather than only at
+  // pre-flight: even the re-probe above can't close every instance of the
+  // race (a stale process can still bind between that check and the
+  // client's own bind attempt). If the client is what died, check whether
+  // that's what happened and name the real holder — the one piece of
+  // information a raw EADDRINUSE trace doesn't give the user.
+  if (firstExit.name === "client" && !(await isPortFree(3000))) {
+    console.error(describePortConflict(3000));
+  }
 }
 
 stopAll();
